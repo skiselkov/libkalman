@@ -26,53 +26,57 @@
 #ifndef	_ACF_UTILS_KALMAN_H_
 #define	_ACF_UTILS_KALMAN_H_
 
-#include <acfutils/core.h>
-#include <acfutils/math.h>
-
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
 /*
- * WARNING: all matrices are COLUMN ORDER MAJOR.
+ * WARNING: matrices are COLUMN ORDER MAJOR. Use the KALMAN_MAT macro
+ * to access individual elements of the matrix.
+ * Also note, although our state is fixed at 4 elements and a 4x4 matrix,
+ * this is simply for convenience of operations inside of the library. If
+ * your problem requires fewer state parameters to be used, simply set
+ * the corresponding vector and matrix elements to 0 to ignore them.
  */
-
-#define	KALMAN_MAX_STATE_LEN	4
-#define	KALMAN_MAX_MAT_LEN	POW2(KALMAN_MAX_STATE_LEN)
+#define	KALMAN_STATE_LEN	4
+#define	KALMAN_MAT(mat, col, row)	\
+	((mat)[((col) * KALMAN_STATE_LEN) + row])
 
 typedef struct kalman_s kalman_t;
+typedef double kalman_vec_t[KALMAN_STATE_LEN];
+typedef double kalman_mat_t[KALMAN_STATE_LEN * KALMAN_STATE_LEN];
 
-kalman_t *kalman_alloc(unsigned state_len);
+kalman_t *kalman_alloc(void);
 void kalman_free(kalman_t *kal);
 
 /*
  * Vectors
  */
-void kalman_set_state(kalman_t *kal, const double *state);
-const double *kalman_get_state(kalman_t *kal);
-void kalman_set_control(kalman_t *kal, const double *control);
-const double *kalman_get_control(kalman_t *kal);
-void kalman_set_proc_err(kalman_t *kal, const double *proc_err);
-const double *kalman_get_proc_err(kalman_t *kal);
+void kalman_set_state(kalman_t *kal, const kalman_vec_t state);
+void kalman_get_state(const kalman_t *kal, kalman_vec_t state);
+void kalman_set_control(kalman_t *kal, const kalman_vec_t control);
+void kalman_get_control(const kalman_t *kal, kalman_vec_t control);
+void kalman_set_proc_err(kalman_t *kal, const kalman_vec_t proc_err);
+void kalman_get_proc_err(const kalman_t *kal, kalman_vec_t proc_err);
 
 /*
  * Matrices
  */
-void kalman_set_cov_mat(kalman_t *kal, const double *cov_mat);
-const double *kalman_get_cov_mat(kalman_t *kal);
-void kalman_set_cov_mat_err(kalman_t *kal, const double *cont_mat_err);
-const double *kalman_get_cont_mat_err(kalman_t *kal);
+void kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t cov_mat);
+void kalman_get_cov_mat(const kalman_t *kal, kalman_mat_t cov_mat);
+void kalman_set_cont_mat_err(kalman_t *kal, const kalman_mat_t cont_mat_err);
+void kalman_get_cont_mat_err(const kalman_t *kal, kalman_mat_t cont_mat_err);
 
-void kalman_set_pred_mat(kalman_t *kal, const double *pred_mat);
-const double *kalman_get_pred_mat(kalman_t *kal);
-void kalman_set_cont_mat(kalman_t *kal, const double *cont_mat);
-const double *kalman_get_cont_mat(kalman_t *kal);
+void kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t pred_mat);
+void kalman_get_pred_mat(const kalman_t *kal, kalman_mat_t pred_mat);
+void kalman_set_cont_mat(kalman_t *kal, const kalman_mat_t cont_mat);
+void kalman_get_cont_mat(const kalman_t *kal, kalman_mat_t cont_mat);
 
 /*
  * Running the Kalman filter
  */
-void kalman_step(kalman_t *kal, const double *measurement,
-    const double *measurement_cov_mat);
+void kalman_step(kalman_t *kal, const kalman_vec_t measurement,
+    const kalman_mat_t measurement_cov_mat);
 
 #ifdef	__cplusplus
 }
