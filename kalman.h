@@ -26,6 +26,10 @@
 #ifndef	_ACF_UTILS_KALMAN_H_
 #define	_ACF_UTILS_KALMAN_H_
 
+#include <stdbool.h>
+#include <string.h>
+#include <math.h>
+
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -38,45 +42,90 @@ extern "C" {
  * your problem requires fewer state parameters to be used, simply set
  * the corresponding vector and matrix elements to 0 to ignore them.
  */
-#define	KALMAN_STATE_LEN	4
-#define	KALMAN_MAT(mat, col, row)	\
-	((mat)[((col) * KALMAN_STATE_LEN) + row])
+#define	KALMAN_VEC_LEN			4
+#define	KALMAN_VEC(...) \
+	((kalman_vec_t){{__VA_ARGS__}})
+#define	KALMAN_VECi(vec, col)		\
+	((vec).v[(col)])
+#define	KALMAN_MAT(...) \
+	((kalman_mat_t){{__VA_ARGS__}})
+#define	KALMAN_MATxy(mat, col, row)	\
+	((mat).m[((col) * KALMAN_VEC_LEN) + row])
+#define	KALMAN_MAT2_BYROW(row1col1, row1col2, row2col1, row2col2) \
+	((kalman_mat_t){{ \
+	row1col1, row2col1, 0, 0, \
+	row1col2, row2col2, 0, 0 }})
+#define	KALMAN_MAT3_BYROW(\
+    row1col1, row1col2, row1col3, \
+    row2col1, row2col2, row2col3, \
+    row3col1, row3col2, row3col3) ((kalman_mat_t){{ \
+	row1col1, row2col1, row3col1, 0, \
+	row1col2, row2col2, row3col2, 0, \
+	row1col3, row2col3, row3col3, 0 }})
+#define	KALMAN_MAT4_BYROW(\
+    row1col1, row1col2, row1col3, row1col4, \
+    row2col1, row2col2, row2col3, row2col4, \
+    row3col1, row3col2, row3col3, row3col4, \
+    row4col1, row4col2, row4col3, row4col4) ((kalman_mat_t){{ \
+	row1col1, row2col1, row3col1, row4col1, \
+	row1col2, row2col2, row3col2, row4col2, \
+	row1col3, row2col3, row3col3, row4col3, \
+	row1col4, row2col4, row3col4, row4col4 }})
 
 typedef struct kalman_s kalman_t;
-typedef double kalman_vec_t[KALMAN_STATE_LEN];
-typedef double kalman_mat_t[KALMAN_STATE_LEN * KALMAN_STATE_LEN];
 
-kalman_t *kalman_alloc(void);
+typedef struct {
+	double	v[KALMAN_VEC_LEN];
+} kalman_vec_t;
+#define	KALMAN_ZERO_VEC	((kalman_vec_t){{0, 0, 0, 0}})
+#define	KALMAN_NULL_VEC	((kalman_vec_t){{NAN, NAN, NAN, NAN}})
+#define	KALMAN_IS_NULL_VEC(vec)	(isnan((vec).v[0]))
+
+typedef struct {
+	double	m[KALMAN_VEC_LEN * KALMAN_VEC_LEN];
+} kalman_mat_t;
+#define	KALMAN_ZERO_MAT	\
+	((kalman_mat_t){{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}})
+#define	KALMAN_NULL_MAT	((kalman_mat_t){{NAN, NAN, NAN, NAN, \
+	NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN }})
+#define	KALMAN_IDENT_MAT ((kalman_mat_t){{ \
+	1, 0, 0, 0, \
+	0, 1, 0, 0, \
+	0, 0, 1, 0, \
+	0, 0, 0, 1 }})
+#define	KALMAN_IS_NULL_MAT(mat)	(isnan((mat).m[0]))
+
+kalman_t *kalman_alloc(unsigned state_len);
 void kalman_free(kalman_t *kal);
 
 /*
  * Vectors
  */
-void kalman_set_state(kalman_t *kal, const kalman_vec_t state);
-void kalman_get_state(const kalman_t *kal, kalman_vec_t state);
-void kalman_set_control(kalman_t *kal, const kalman_vec_t control);
-void kalman_get_control(const kalman_t *kal, kalman_vec_t control);
-void kalman_set_proc_err(kalman_t *kal, const kalman_vec_t proc_err);
-void kalman_get_proc_err(const kalman_t *kal, kalman_vec_t proc_err);
+void kalman_set_state(kalman_t *kal, const kalman_vec_t *state);
+kalman_vec_t kalman_get_state(const kalman_t *kal);
+void kalman_set_cont(kalman_t *kal, const kalman_vec_t *control);
+kalman_vec_t kalman_get_cont(const kalman_t *kal);
+void kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err);
+kalman_vec_t kalman_get_proc_err(const kalman_t *kal);
 
 /*
  * Matrices
  */
-void kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t cov_mat);
-void kalman_get_cov_mat(const kalman_t *kal, kalman_mat_t cov_mat);
-void kalman_set_cont_mat_err(kalman_t *kal, const kalman_mat_t cont_mat_err);
-void kalman_get_cont_mat_err(const kalman_t *kal, kalman_mat_t cont_mat_err);
+void kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t *cov_mat);
+kalman_mat_t kalman_get_cov_mat(const kalman_t *kal);
+void kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err);
+kalman_mat_t kalman_get_cov_mat_err(const kalman_t *kal);
 
-void kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t pred_mat);
-void kalman_get_pred_mat(const kalman_t *kal, kalman_mat_t pred_mat);
-void kalman_set_cont_mat(kalman_t *kal, const kalman_mat_t cont_mat);
-void kalman_get_cont_mat(const kalman_t *kal, kalman_mat_t cont_mat);
+void kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t *pred_mat);
+kalman_mat_t kalman_get_pred_mat(const kalman_t *kal);
+void kalman_set_cont_mat(kalman_t *kal, const kalman_mat_t *cont_mat);
+kalman_mat_t kalman_get_cont_mat(const kalman_t *kal);
 
 /*
  * Running the Kalman filter
  */
-void kalman_step(kalman_t *kal, const kalman_vec_t measurement,
-    const kalman_mat_t measurement_cov_mat);
+void kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
+    const kalman_mat_t *measurement_cov_mat);
 
 #ifdef	__cplusplus
 }
