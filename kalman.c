@@ -75,6 +75,13 @@ kalman_free(kalman_t *kal)
 	free(kal);
 }
 
+unsigned
+kalman_get_state_len(kalman_t *kal)
+{
+	ASSERT(kal != NULL);
+	return (kal->state_len);
+}
+
 /*
  * Sets the current state vector of the Kalman filter. Use this to set an
  * initial state.
@@ -402,4 +409,36 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 
 	ASSERT3F(MAT(kal->P_k, 0, 0), >=, 0);
 	ASSERT(isfinite(KALMAN_VECi(kal->x_k, 0)));
+}
+
+void
+kalman_print_vec(const char *name, const kalman_vec_t *vec, unsigned state_len)
+{
+	printf("%s = (", name);
+	for (unsigned i = 0; i < state_len; i++) {
+		printf("%f%s", KALMAN_VECi(*vec, i),
+		    (i + 1 < state_len) ? "\t": "");
+	}
+	printf(")\n");
+}
+
+void
+kalman_print_mat(const char *name, const kalman_mat_t *mat, unsigned state_len)
+{
+	int len = strlen(name) + 4;
+	char leadspace[len + 1];
+
+	printf("%s = (", name);
+	memset(leadspace, ' ', len);
+	leadspace[len] = '\0';
+	leadspace[len - 1] = '(';
+	for (unsigned r = 0; r < state_len; r++) {
+		if (r > 0)
+			printf("%s", leadspace);
+		for (unsigned c = 0; c < state_len; c++) {
+			printf("%f%s", KALMAN_MATxy(*mat, c, r),
+			    (c + 1 < state_len) ? "\t": "");
+		}
+		printf(")\n");
+	}
 }
