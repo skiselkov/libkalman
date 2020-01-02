@@ -76,7 +76,7 @@ kalman_free(kalman_t *kal)
 }
 
 unsigned
-kalman_get_state_len(kalman_t *kal)
+kalman_get_state_len(const kalman_t *kal)
 {
 	ASSERT(kal != NULL);
 	return (kal->state_len);

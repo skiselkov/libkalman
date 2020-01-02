@@ -103,7 +103,7 @@ typedef struct {
 
 kalman_t *kalman_alloc(unsigned state_len);
 void kalman_free(kalman_t *kal);
-unsigned kalman_get_state_len(kalman_t *kal);
+unsigned kalman_get_state_len(const kalman_t *kal);
 
 /*
  * Vectors
