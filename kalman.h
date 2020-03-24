@@ -20,11 +20,11 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2019 Saso Kiselkov. All rights reserved.
+ * Copyright 2020 Saso Kiselkov. All rights reserved.
  */
 
-#ifndef	_ACF_UTILS_KALMAN_H_
-#define	_ACF_UTILS_KALMAN_H_
+#ifndef	_LIBKALMAN_H_
+#define	_LIBKALMAN_H_
 
 #include <stdbool.h>
 #include <string.h>
@@ -169,4 +169,4 @@ void kalman_print_mat(const char *name, const kalman_mat_t *mat,
 }
 #endif
 
-#endif	/* _ACF_UTILS_KALMAN_H_ */
+#endif	/* _LIBKALMAN_H_ */
