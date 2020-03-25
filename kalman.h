@@ -132,7 +132,8 @@ kalman_mat_t kalman_get_cont_mat(const kalman_t *kal);
  * Running the Kalman filter
  */
 void kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
-    const kalman_mat_t *measurement_cov_mat);
+    const kalman_mat_t *measurement_cov_mat,
+    const kalman_mat_t *observation_model_p);
 
 /*
  * Debugging the Kalman filter

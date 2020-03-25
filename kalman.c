@@ -47,6 +47,8 @@ struct kalman_s {
 	kalman_mat_t	A_k_T;
 	/* Control matrix */
 	kalman_mat_t	B_k;
+	/* Sensor covariance matrix */
+	kalman_mat_t	R_k;
 };
 
 kalman_t *
@@ -320,11 +322,14 @@ mat4_subtract(mfloat_t outmat4[MAT4_SIZE], const mfloat_t m1[MAT4_SIZE],
  */
 void
 kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
-    const kalman_mat_t *measurement_cov_mat)
+    const kalman_mat_t *measurement_cov_mat,
+    const kalman_mat_t *observation_model_p)
 {
 	kalman_vec_t x_k_pred, tmpvec, tmpvec2;
-	kalman_mat_t P_k_pred, tmpmat;
+	kalman_mat_t P_k_pred, tmpmat, tmpmat2;
+	kalman_mat_t K_numer, K_denom, K_denom_inv;
 	kalman_mat_t K = KALMAN_ZERO_MAT;
+	kalman_mat_t observation_model, observation_model_T;
 
 	ASSERT(kal != NULL);
 	ASSERT(!KALMAN_IS_NULL_VEC(kal->x_k));
@@ -333,6 +338,11 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	ASSERT(measurement != NULL);
 	ASSERT(measurement_cov_mat != NULL);
 
+	if (observation_model_p != NULL)
+		observation_model = *observation_model_p;
+	else
+		observation_model = KALMAN_IDENT_MAT;
+	mat4_transpose(observation_model_T.m, observation_model.m);
 	/*
 	 * Prediction phase:
 	 *
@@ -351,43 +361,50 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	vec4_add(x_k_pred.v, tmpvec.v, tmpvec2.v);
 	vec4_add(x_k_pred.v, x_k_pred.v, kal->w_k.v);
 
-	mat4_multiply(P_k_pred.m, kal->A_k.m, kal->P_k.m);
-	mat4_multiply(P_k_pred.m, P_k_pred.m, kal->A_k_T.m);
-	mat4_add(P_k_pred.m, P_k_pred.m, kal->Q_k.m);
-
-	/* Set all off-diagonal elements to zero */
-	MAT(P_k_pred, 0, 1) = 0;
-	MAT(P_k_pred, 0, 2) = 0;
-	MAT(P_k_pred, 0, 3) = 0;
-	MAT(P_k_pred, 1, 0) = 0;
-	MAT(P_k_pred, 1, 2) = 0;
-	MAT(P_k_pred, 1, 3) = 0;
-	MAT(P_k_pred, 2, 0) = 0;
-	MAT(P_k_pred, 2, 1) = 0;
-	MAT(P_k_pred, 2, 3) = 0;
-	MAT(P_k_pred, 3, 0) = 0;
-	MAT(P_k_pred, 3, 1) = 0;
-	MAT(P_k_pred, 3, 2) = 0;
+	mat4_multiply(tmpmat.m, kal->A_k.m, kal->P_k.m);
+	mat4_multiply(tmpmat2.m, tmpmat.m, kal->A_k_T.m);
+	mat4_add(P_k_pred.m, tmpmat2.m, kal->Q_k.m);
 
 	/*
 	 * Compute the Kalman gain:
 	 *               T
 	 *         P' * H
 	 *          k    k
-	 * K = ----------------
+	 * K = -----------------
 	 *                T
 	 *     H  * P' * H  + R
-	 *      k    k    k
+	 *      k    k    k    k
 	 */
-	mat4_add(tmpmat.m, P_k_pred.m, measurement_cov_mat->m);
-
-	MAT(K, 0, 0) = MAT(P_k_pred, 0, 0) / MAT(tmpmat, 0, 0);
-	if (kal->state_len >= 2)
-		MAT(K, 1, 1) = MAT(P_k_pred, 1, 1) / MAT(tmpmat, 1, 1);
-	if (kal->state_len >= 3)
-		MAT(K, 2, 2) = MAT(P_k_pred, 2, 2) / MAT(tmpmat, 2, 2);
-	if (kal->state_len >= 4)
-		MAT(K, 3, 3) = MAT(P_k_pred, 3, 3) / MAT(tmpmat, 3, 3);
+	/* numerator portion */
+	mat4_multiply(K_numer.m, P_k_pred.m, observation_model_T.m);
+	/* denominator portion */
+	mat4_multiply(tmpmat.m, observation_model.m, K_numer.m);
+	mat4_add(K_denom.m, tmpmat.m, measurement_cov_mat->m);
+	/*
+	 * Combine the numerator & denominator. Careful about inversions,
+	 * we need to set any elements outside of the state size to unity,
+	 * otherwise the inversion will result in div-by-zero.
+	 */
+	switch (kal->state_len) {
+	case 1:
+		KALMAN_MATxy(K_denom, 1, 1) = 1;
+		KALMAN_MATxy(K_denom, 2, 2) = 1;
+		KALMAN_MATxy(K_denom, 3, 3) = 1;
+		break;
+	case 2:
+		KALMAN_MATxy(K_denom, 2, 2) = 1;
+		KALMAN_MATxy(K_denom, 3, 3) = 1;
+		break;
+	case 3:
+		KALMAN_MATxy(K_denom, 3, 3) = 1;
+		break;
+	case 4:
+		break;
+	default:
+		VERIFY(0);
+	}
+	mat4_inverse(K_denom_inv.m, K_denom.m);
+	mat4_multiply(K.m, K_numer.m, K_denom_inv.m);
 
 	/*
 	 * Update the estimate via the measurement:
@@ -397,15 +414,17 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	 *  k    k        \ k    k   k /
 	 *
 	 */
-	vec4_subtract(tmpvec.v, (mfloat_t *)measurement->v, x_k_pred.v);
-	vec4_multiply_mat4(tmpvec.v, tmpvec.v, K.m);
+	vec4_multiply_mat4(tmpvec.v, x_k_pred.v, observation_model.m);
+	vec4_subtract(tmpvec2.v, measurement->v, tmpvec.v);
+	vec4_multiply_mat4(tmpvec.v, tmpvec2.v, K.m);
 	vec4_add(kal->x_k.v, x_k_pred.v, tmpvec.v);
 	/*
 	 * P  = P' - K * H  * P'
 	 *  k    k        k    k
 	 */
-	mat4_multiply(tmpmat.m, K.m, P_k_pred.m);
-	mat4_subtract(kal->P_k.m, P_k_pred.m, tmpmat.m);
+	mat4_multiply(tmpmat.m, K.m, observation_model.m);
+	mat4_multiply(tmpmat2.m, tmpmat.m, P_k_pred.m);
+	mat4_subtract(kal->P_k.m, P_k_pred.m, tmpmat2.m);
 
 	ASSERT3F(MAT(kal->P_k, 0, 0), >=, 0);
 	ASSERT(isfinite(KALMAN_VECi(kal->x_k, 0)));
