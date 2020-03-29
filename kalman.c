@@ -18,10 +18,9 @@
 
 #include <stdio.h>
 
-#include <acfutils/safe_alloc.h>
-
 #include "mathc.h"
 #include "kalman.h"
+#include "kalman_assert.h"
 
 CTASSERT(sizeof (mfloat_t) == sizeof (double));
 
@@ -56,8 +55,8 @@ kalman_alloc(unsigned state_len)
 {
 	kalman_t *kal = safe_calloc(1, sizeof (kalman_t));
 
-	ASSERT(state_len != 0);
-	ASSERT3U(state_len, <=, KALMAN_VEC_LEN);
+	KAL_ASSERT(state_len != 0);
+	KAL_ASSERT3U(state_len, <=, KALMAN_VEC_LEN);
 	kal->state_len = state_len;
 	/*
 	 * We initialize the minimum set of vectors and matrices to null
@@ -80,7 +79,7 @@ kalman_free(kalman_t *kal)
 unsigned
 kalman_get_state_len(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->state_len);
 }
 
@@ -97,8 +96,8 @@ kalman_get_state_len(const kalman_t *kal)
 void
 kalman_set_state(kalman_t *kal, const kalman_vec_t *state)
 {
-	ASSERT(kal != NULL);
-	ASSERT(state != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(state != NULL);
 	kal->x_k = *state;
 }
 
@@ -108,7 +107,7 @@ kalman_set_state(kalman_t *kal, const kalman_vec_t *state)
 kalman_vec_t
 kalman_get_state(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->x_k);
 }
 
@@ -126,8 +125,8 @@ kalman_get_state(const kalman_t *kal)
 void
 kalman_set_cont(kalman_t *kal, const kalman_vec_t *control)
 {
-	ASSERT(kal != NULL);
-	ASSERT(control != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(control != NULL);
 	kal->u_k = *control;
 }
 
@@ -137,7 +136,7 @@ kalman_set_cont(kalman_t *kal, const kalman_vec_t *control)
 kalman_vec_t
 kalman_get_cont(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->u_k);
 }
 
@@ -153,8 +152,8 @@ kalman_get_cont(const kalman_t *kal)
 void
 kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err)
 {
-	ASSERT(kal != NULL);
-	ASSERT(proc_err != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(proc_err != NULL);
 	kal->w_k = *proc_err;
 }
 
@@ -164,7 +163,7 @@ kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err)
 kalman_vec_t
 kalman_get_proc_err(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->w_k);
 }
 
@@ -182,8 +181,8 @@ kalman_get_proc_err(const kalman_t *kal)
 void
 kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t *cov_mat)
 {
-	ASSERT(kal != NULL);
-	ASSERT(cov_mat != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(cov_mat != NULL);
 	kal->P_k = *cov_mat;
 }
 
@@ -193,7 +192,7 @@ kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t *cov_mat)
 kalman_mat_t
 kalman_get_cov_mat(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->P_k);
 }
 
@@ -216,8 +215,8 @@ kalman_get_cov_mat(const kalman_t *kal)
 void
 kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err)
 {
-	ASSERT(kal != NULL);
-	ASSERT(cov_mat_err != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(cov_mat_err != NULL);
 	kal->Q_k = *cov_mat_err;
 }
 
@@ -228,7 +227,7 @@ kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err)
 kalman_mat_t
 kalman_get_cov_mat_err(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->Q_k);
 }
 
@@ -243,8 +242,8 @@ kalman_get_cov_mat_err(const kalman_t *kal)
 void
 kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t *pred_mat)
 {
-	ASSERT(kal != NULL);
-	ASSERT(pred_mat != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(pred_mat != NULL);
 	kal->A_k = *pred_mat;
 	mat4_transpose(kal->A_k_T.m, kal->A_k.m);
 }
@@ -255,7 +254,7 @@ kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t *pred_mat)
 kalman_mat_t
 kalman_get_pred_mat(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->A_k);
 }
 
@@ -276,8 +275,8 @@ kalman_get_pred_mat(const kalman_t *kal)
 void
 kalman_set_cont_mat(kalman_t *kal, const kalman_mat_t *cont_mat)
 {
-	ASSERT(kal != NULL);
-	ASSERT(cont_mat != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(cont_mat != NULL);
 	kal->B_k = *cont_mat;
 }
 
@@ -287,7 +286,7 @@ kalman_set_cont_mat(kalman_t *kal, const kalman_mat_t *cont_mat)
 kalman_mat_t
 kalman_get_cont_mat(const kalman_t *kal)
 {
-	ASSERT(kal != NULL);
+	KAL_ASSERT(kal != NULL);
 	return (kal->B_k);
 }
 
@@ -331,12 +330,12 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	kalman_mat_t K = KALMAN_ZERO_MAT;
 	kalman_mat_t observation_model, observation_model_T;
 
-	ASSERT(kal != NULL);
-	ASSERT(!KALMAN_IS_NULL_VEC(kal->x_k));
-	ASSERT(!KALMAN_IS_NULL_MAT(kal->A_k));
-	ASSERT(!KALMAN_IS_NULL_MAT(kal->P_k));
-	ASSERT(measurement != NULL);
-	ASSERT(measurement_cov_mat != NULL);
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(!KALMAN_IS_NULL_VEC(kal->x_k));
+	KAL_ASSERT(!KALMAN_IS_NULL_MAT(kal->A_k));
+	KAL_ASSERT(!KALMAN_IS_NULL_MAT(kal->P_k));
+	KAL_ASSERT(measurement != NULL);
+	KAL_ASSERT(measurement_cov_mat != NULL);
 
 	if (observation_model_p != NULL)
 		observation_model = *observation_model_p;
@@ -401,18 +400,16 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	case 4:
 		break;
 	default:
-		VERIFY(0);
+		KAL_VERIFY(0);
 	}
 	mat4_inverse(K_denom_inv.m, K_denom.m);
 	mat4_multiply(K.m, K_numer.m, K_denom_inv.m);
 
 	/*
 	 * Update the estimate via the measurement:
-	 *
 	 *                /            \
 	 * x  = x' + K * ( z  - H * x'  )
 	 *  k    k        \ k    k   k /
-	 *
 	 */
 	vec4_multiply_mat4(tmpvec.v, x_k_pred.v, observation_model.m);
 	vec4_subtract(tmpvec2.v, measurement->v, tmpvec.v);
@@ -426,8 +423,50 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	mat4_multiply(tmpmat2.m, tmpmat.m, P_k_pred.m);
 	mat4_subtract(kal->P_k.m, P_k_pred.m, tmpmat2.m);
 
-	ASSERT3F(MAT(kal->P_k, 0, 0), >=, 0);
-	ASSERT(isfinite(KALMAN_VECi(kal->x_k, 0)));
+	KAL_ASSERT3F(MAT(kal->P_k, 0, 0), >=, 0);
+	KAL_ASSERT(isfinite(KALMAN_VECi(kal->x_k, 0)));
+}
+
+/*
+ * This function is the null-update version of kalman_step. It can be used
+ * for cases where we want to step the filter's prediction forward by some
+ * fixed time quantum, but we don't have a new measurement to incorporate.
+ * So we simply evolve the filter forward based on the prediction parameters.
+ * This is effectively the same as kalman_step with an infinite covariance
+ * (i.e. measured value is completely unreliable and thus only the
+ * prediction is used).
+ */
+void
+kalman_step_null(kalman_t *kal)
+{
+	kalman_vec_t tmpvec, tmpvec2, x_k;
+	kalman_mat_t tmpmat, tmpmat2;
+
+	KAL_ASSERT(kal != NULL);
+	/*
+	 * In the null update model, our predicition simply becomes the new
+	 * state of the filter. This is because a null update behaves as if
+	 * the measurement covariance is infinite, resulting in the Kalman
+	 * gain K=0.
+	 *
+	 * new state vector:
+	 *                      ->
+	 * x  = A  * x    + B * u  + w
+	 *  k    k    k-1    k   k    k
+	 *
+	 * new uncertainty:
+	 *                   T
+	 * P  = A  * P    * A  + Q
+	 *  k    k    k-1    k    k
+	 */
+	vec4_multiply_mat4(tmpvec.v, kal->x_k.v, kal->A_k.m);
+	vec4_multiply_mat4(tmpvec2.v, kal->u_k.v, kal->B_k.m);
+	vec4_add(x_k.v, tmpvec.v, tmpvec2.v);
+	vec4_add(kal->x_k.v, x_k.v, kal->w_k.v);
+
+	mat4_multiply(tmpmat.m, kal->A_k.m, kal->P_k.m);
+	mat4_multiply(tmpmat2.m, tmpmat.m, kal->A_k_T.m);
+	mat4_add(kal->P_k.m, tmpmat2.m, kal->Q_k.m);
 }
 
 void
