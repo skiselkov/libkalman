@@ -42,7 +42,11 @@ extern "C" {
  * your problem requires fewer state parameters to be used, simply set
  * the corresponding vector and matrix elements to 0 to ignore them.
  */
+#ifdef	KALMAN_USE_MATHC
 #define	KALMAN_VEC_LEN		4
+#else
+#define	KALMAN_VEC_LEN		6
+#endif
 #define	KALMAN_VEC(...)		((kalman_vec_t){{__VA_ARGS__}})
 #define	KALMAN_VECi(vec, col)	((vec).v[(col)])
 
@@ -51,55 +55,115 @@ typedef struct kalman_s kalman_t;
 typedef struct {
 	double	v[KALMAN_VEC_LEN];
 } kalman_vec_t;
-#define	KALMAN_ZERO_VEC		((kalman_vec_t){{0, 0, 0, 0}})
-#define	KALMAN_NULL_VEC		((kalman_vec_t){{NAN, NAN, NAN, NAN}})
+#define	KALMAN_ZERO_VEC		((kalman_vec_t){{ 0 }})
+#define	KALMAN_NULL_VEC		((kalman_vec_t){{NAN, NAN, NAN, NAN, NAN, NAN}})
 #define	KALMAN_IS_NULL_VEC(vec)	(isnan((vec).v[0]))
 
 typedef struct {
 	double	m[KALMAN_VEC_LEN * KALMAN_VEC_LEN];
 } kalman_mat_t;
-#define	KALMAN_ZERO_MAT	((kalman_mat_t){{ \
-	0, 0, 0, 0, \
-	0, 0, 0, 0, \
-	0, 0, 0, 0, \
-	0, 0, 0, 0}})
+#define	KALMAN_ZERO_MAT	((kalman_mat_t){{ 0 }})
+#ifdef	KALMAN_USE_MATHC
 #define	KALMAN_NULL_MAT	((kalman_mat_t){{ \
 	NAN, NAN, NAN, NAN, \
 	NAN, NAN, NAN, NAN, \
 	NAN, NAN, NAN, NAN, \
-	NAN, NAN, NAN, NAN }})
+	NAN, NAN, NAN, NAN}})
 #define	KALMAN_IDENT_MAT ((kalman_mat_t){{ \
 	1, 0, 0, 0, \
 	0, 1, 0, 0, \
 	0, 0, 1, 0, \
-	0, 0, 0, 1 }})
+	0, 0, 0, 1}})
+#else	/* !defined(KALMAN_USE_MATHC) */
+#define	KALMAN_NULL_MAT	((kalman_mat_t){{ \
+	NAN, NAN, NAN, NAN, NAN, NAN, \
+	NAN, NAN, NAN, NAN, NAN, NAN, \
+	NAN, NAN, NAN, NAN, NAN, NAN, \
+	NAN, NAN, NAN, NAN, NAN, NAN, \
+	NAN, NAN, NAN, NAN, NAN, NAN, \
+	NAN, NAN, NAN, NAN, NAN, NAN}})
+#define	KALMAN_IDENT_MAT ((kalman_mat_t){{ \
+	1, 0, 0, 0, 0, 0, \
+	0, 1, 0, 0, 0, 0, \
+	0, 0, 1, 0, 0, 0, \
+	0, 0, 0, 1, 0, 0, \
+	0, 0, 0, 0, 1, 0, \
+	0, 0, 0, 0, 0, 1 }})
+#endif	/* !defined(KALMAN_USE_MATHC) */
 #define	KALMAN_IS_NULL_MAT(mat)	(isnan((mat).m[0]))
 
 #define	KALMAN_MATxy(mat, col, row)	\
 	((mat).m[((col) * KALMAN_VEC_LEN) + row])
+
+#ifdef	KALMAN_USE_MATHC
 #define	KALMAN_MAT2_BYROW(row1col1, row1col2, row2col1, row2col2) \
 	((kalman_mat_t){{ \
-	row1col1,	row2col1,	0,		0, \
-	row1col2,	row2col2,	0,		0, \
-	0,		0,		0,		0, \
-	0,		0,		0,		0 }})
+	row1col1,	row2col1,	0,	0, \
+	row1col2,	row2col2 }})
 #define	KALMAN_MAT3_BYROW(\
     row1col1, row1col2, row1col3, \
     row2col1, row2col2, row2col3, \
     row3col1, row3col2, row3col3) ((kalman_mat_t){{ \
 	row1col1,	row2col1,	row3col1,	0, \
 	row1col2,	row2col2,	row3col2,	0, \
-	row1col3,	row2col3,	row3col3,	0, \
-	0,		0,		0,		0 }})
+	row1col3,	row2col3,	row3col3}})
 #define	KALMAN_MAT4_BYROW(\
     row1col1, row1col2, row1col3, row1col4, \
     row2col1, row2col2, row2col3, row2col4, \
     row3col1, row3col2, row3col3, row3col4, \
     row4col1, row4col2, row4col3, row4col4) ((kalman_mat_t){{ \
-	row1col1,	row2col1,	row3col1,	row4col1, \
-	row1col2,	row2col2,	row3col2,	row4col2, \
-	row1col3,	row2col3,	row3col3,	row4col3, \
-	row1col4,	row2col4,	row3col4,	row4col4 }})
+	row1col1, row2col1, row3col1, row4col1, \
+	row1col2, row2col2, row3col2, row4col2, \
+	row1col3, row2col3, row3col3, row4col3, \
+	row1col4, row2col4, row3col4, row4col4 }})
+#else	/* !defined(KALMAN_USE_MATHC) */
+#define	KALMAN_MAT2_BYROW(row1col1, row1col2, row2col1, row2col2) \
+	((kalman_mat_t){{ \
+	row1col1,	row2col1,	0,	0,	0,	0, \
+	row1col2,	row2col2 }})
+#define	KALMAN_MAT3_BYROW(\
+    row1col1, row1col2, row1col3, \
+    row2col1, row2col2, row2col3, \
+    row3col1, row3col2, row3col3) ((kalman_mat_t){{ \
+	row1col1,	row2col1,	row3col1,	0,	0,	0, \
+	row1col2,	row2col2,	row3col2,	0,	0,	0, \
+	row1col3,	row2col3,	row3col3}})
+#define	KALMAN_MAT4_BYROW(\
+    row1col1, row1col2, row1col3, row1col4, \
+    row2col1, row2col2, row2col3, row2col4, \
+    row3col1, row3col2, row3col3, row3col4, \
+    row4col1, row4col2, row4col3, row4col4) ((kalman_mat_t){{ \
+	row1col1, row2col1, row3col1, row4col1, 0, 0, \
+	row1col2, row2col2, row3col2, row4col2, 0, 0, \
+	row1col3, row2col3, row3col3, row4col3, 0, 0, \
+	row1col4, row2col4, row3col4, row4col4 }})
+#define	KALMAN_MAT5_BYROW(\
+    row1col1, row1col2, row1col3, row1col4, row1col5, \
+    row2col1, row2col2, row2col3, row2col4, row2col5, \
+    row3col1, row3col2, row3col3, row3col4, row3col5, \
+    row4col1, row4col2, row4col3, row4col4, row4col5, \
+    row5col1, row5col2, row5col3, row5col4, row5col5) \
+    ((kalman_mat_t){{ \
+	row1col1, row2col1, row3col1, row4col1, row5col1, 0, \
+	row1col2, row2col2, row3col2, row4col2, row5col2, 0, \
+	row1col3, row2col3, row3col3, row4col3, row5col3, 0, \
+	row1col4, row2col4, row3col4, row4col4, row5col4, 0, \
+	row1col5, row2col5, row3col5, row4col5, row5col5, 0}})
+#define	KALMAN_MAT6_BYROW(\
+    row1col1, row1col2, row1col3, row1col4, row1col5, row1col6, \
+    row2col1, row2col2, row2col3, row2col4, row2col5, row2col6, \
+    row3col1, row3col2, row3col3, row3col4, row3col5, row3col6, \
+    row4col1, row4col2, row4col3, row4col4, row4col5, row4col6, \
+    row5col1, row5col2, row5col3, row5col4, row5col5, row5col6, \
+    row6col1, row6col2, row6col3, row6col4, row6col5, row6col6) \
+    ((kalman_mat_t){{ \
+	row1col1, row2col1, row3col1, row4col1, row5col1, row6col1, \
+	row1col2, row2col2, row3col2, row4col2, row5col2, row6col2, \
+	row1col3, row2col3, row3col3, row4col3, row5col3, row6col3, \
+	row1col4, row2col4, row3col4, row4col4, row5col4, row6col4, \
+	row1col5, row2col5, row3col5, row4col5, row5col5, row6col5, \
+	row1col6, row2col6, row3col6, row4col6, row5col6, row6col6 }})
+#endif	/* !defined(KALMAN_USE_MATHC) */
 
 kalman_t *kalman_alloc(unsigned state_len);
 void kalman_free(kalman_t *kal);
@@ -135,6 +199,12 @@ void kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
     const kalman_mat_t *measurement_cov_mat,
     const kalman_mat_t *observation_model_p);
 void kalman_step_null(kalman_t *kal);
+
+/*
+ * Utility functions
+ */
+void kalman_combine_measurements(double m0, double var0,
+    double m1, double var1, double *m_out, double *var_out);
 
 /*
  * Debugging the Kalman filter

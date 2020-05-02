@@ -13,22 +13,67 @@
  * CDDL HEADER END
 */
 /*
- * Copyright 2019 Saso Kiselkov. All rights reserved.
+ * Copyright 2020 Saso Kiselkov. All rights reserved.
  */
 
 #include <stdio.h>
 
-#include "mathc.h"
-#include "kalman.h"
 #include "kalman_assert.h"
 
+#ifdef	KALMAN_USE_MATHC
+#include "mathc.h"
 CTASSERT(sizeof (mfloat_t) == sizeof (double));
+#else	/* !defined(KALMAN_USE_MATHC) */
+#include <matrix.h>
+#include <matrix2.h>
+CTASSERT(sizeof (Real) == sizeof (double));
+#endif	/* !defined(KALMAN_USE_MATHC) */
 
-#define	MAT(mat, col, row)	KALMAN_MATxy(mat, col, row)
+#include "kalman.h"
+
+#ifndef	KALMAN_USE_MATHC
+
+#define	MAKE_MAT(kal)	m_get((kal)->state_len, (kal)->state_len)
+#define	MAKE_VEC(kal)	v_get((kal)->state_len)
+
+#define	KAL_MAT_COPYIN(mesch_mat, kal_mat) \
+	do { \
+		MAT *m_mat = (mesch_mat); \
+		const kalman_mat_t *k_mat = (kal_mat); \
+		for (unsigned col = 0; col < kal->state_len; col++) { \
+			for (unsigned row = 0; row < kal->state_len; row++) { \
+				m_set_val(m_mat, row, col, \
+				    KALMAN_MATxy(*k_mat, col, row)); \
+			} \
+		} \
+	} while (0)
+
+#define	KAL_MAT_COPYOUT(kal_mat, mesch_mat) \
+	do { \
+		kalman_mat_t *k_mat = (kal_mat); \
+		const MAT *m_mat = (mesch_mat); \
+		for (unsigned col = 0; col < kal->state_len; col++) { \
+			for (unsigned row = 0; row < kal->state_len; row++) { \
+				KALMAN_MATxy(*k_mat, row, col) = \
+				    m_get_val(m_mat, col, row); \
+			} \
+		} \
+	} while (0)
+
+#define	KAL_VEC_COPYIN(mesch_vec, kal_vec) \
+	memcpy((mesch_vec)->ve, (kal_vec)->v, \
+	    sizeof (double) * (mesch_vec)->dim)
+
+#define	KAL_VEC_COPYOUT(kal_vec, mesch_vec) \
+	memcpy((kal_vec)->v, (mesch_vec)->ve, \
+	    sizeof (double) * (mesch_vec)->dim)
+
+#endif	/* !defined(KALMAN_USE_MATHC) */
 
 struct kalman_s {
 	unsigned	state_len;
 
+#ifdef	KALMAN_USE_MATHC
 	/* state vector */
 	kalman_vec_t	x_k;
 	/* control vector */
@@ -48,6 +93,40 @@ struct kalman_s {
 	kalman_mat_t	B_k;
 	/* Sensor covariance matrix */
 	kalman_mat_t	R_k;
+#else	/* !defined(KALMAN_USE_MATHC) */
+	/* state vector */
+	VEC		*x_k;
+	/* control vector */
+	VEC		*u_k;
+	/* process error vector */
+	VEC		*w_k;
+
+	/* Process covariance matrix */
+	MAT		*P_k;
+	/* Process covariance matrix prediction error */
+	MAT		*Q_k;
+	/* State prediction matrix */
+	MAT		*A_k;
+	/* State prediction matrix - transposed */
+	MAT		*A_k_T;
+	/* Control matrix */
+	MAT		*B_k;
+	/* Sensor covariance matrix */
+	MAT		*R_k;
+	/*
+	 * Runtime state - these get reused in kalman_step
+	 */
+	MAT		*tmpmat[3];
+	MAT		*m_cov_mat;
+	MAT		*observation_model;
+	MAT		*observation_model_T;
+	MAT		*P_k_pred;
+	MAT		*K;
+
+	VEC		*tmpvec[3];
+	VEC		*x_k_pred;
+	VEC		*m;
+#endif	/* !defined(KALMAN_USE_MATHC) */
 };
 
 kalman_t *
@@ -58,6 +137,8 @@ kalman_alloc(unsigned state_len)
 	KAL_ASSERT(state_len != 0);
 	KAL_ASSERT3U(state_len, <=, KALMAN_VEC_LEN);
 	kal->state_len = state_len;
+
+#ifdef	KALMAN_USE_MATHC
 	/*
 	 * We initialize the minimum set of vectors and matrices to null
 	 * vector/matrix values, to force the user to set at least these
@@ -66,6 +147,35 @@ kalman_alloc(unsigned state_len)
 	kal->x_k = KALMAN_NULL_VEC;
 	kal->A_k = KALMAN_NULL_MAT;
 	kal->P_k = KALMAN_NULL_MAT;
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kal->x_k = MAKE_VEC(kal);
+	kal->x_k->ve[0] = NAN;
+	kal->u_k = MAKE_VEC(kal);
+	kal->w_k = MAKE_VEC(kal);
+
+	kal->P_k = MAKE_MAT(kal);
+	kal->P_k->me[0][0] = NAN;
+	kal->Q_k = MAKE_MAT(kal);
+	kal->A_k = MAKE_MAT(kal);
+	kal->A_k->me[0][0] = NAN;
+	kal->A_k_T = MAKE_MAT(kal);
+	kal->B_k = MAKE_MAT(kal);
+	kal->R_k = MAKE_MAT(kal);
+
+	for (int i = 0; i < 3; i++) {
+		kal->tmpmat[i] = MAKE_MAT(kal);
+		kal->tmpvec[i] = MAKE_VEC(kal);
+	}
+
+	kal->m_cov_mat = MAKE_MAT(kal);
+	kal->observation_model = MAKE_MAT(kal);
+	kal->observation_model_T = MAKE_MAT(kal);
+	kal->P_k_pred = MAKE_MAT(kal);
+	kal->K = MAKE_MAT(kal);
+
+	kal->x_k_pred = MAKE_VEC(kal);
+	kal->m = MAKE_VEC(kal);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 
 	return (kal);
 }
@@ -73,6 +183,33 @@ kalman_alloc(unsigned state_len)
 void
 kalman_free(kalman_t *kal)
 {
+#ifndef	KALMAN_USE_MATHC
+	V_FREE(kal->x_k);
+	V_FREE(kal->u_k);
+	V_FREE(kal->w_k);
+
+	M_FREE(kal->P_k);
+	M_FREE(kal->Q_k);
+	M_FREE(kal->A_k);
+	M_FREE(kal->A_k_T);
+	M_FREE(kal->B_k);
+	M_FREE(kal->R_k);
+
+	for (int i = 0; i < 3; i++) {
+		M_FREE(kal->tmpmat[i]);
+		V_FREE(kal->tmpvec[i]);
+	}
+
+	M_FREE(kal->m_cov_mat);
+	M_FREE(kal->observation_model);
+	M_FREE(kal->observation_model_T);
+	M_FREE(kal->P_k_pred);
+	M_FREE(kal->K);
+
+	V_FREE(kal->x_k_pred);
+	V_FREE(kal->m);
+#endif	/* !defined(KALMAN_USE_MATHC) */
+
 	free(kal);
 }
 
@@ -98,7 +235,11 @@ kalman_set_state(kalman_t *kal, const kalman_vec_t *state)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(state != NULL);
+#ifdef	KALMAN_USE_MATHC
 	kal->x_k = *state;
+#else
+	KAL_VEC_COPYIN(kal->x_k, state);
+#endif
 }
 
 /*
@@ -108,7 +249,13 @@ kalman_vec_t
 kalman_get_state(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
+#ifdef	KALMAN_USE_MATHC
 	return (kal->x_k);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kalman_vec_t v;
+	KAL_VEC_COPYOUT(&v, kal->x_k);
+	return (v);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
 
 /*
@@ -127,7 +274,11 @@ kalman_set_cont(kalman_t *kal, const kalman_vec_t *control)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(control != NULL);
+#ifdef	KALMAN_USE_MATHC
 	kal->u_k = *control;
+#else
+	KAL_VEC_COPYIN(kal->u_k, control);
+#endif
 }
 
 /*
@@ -137,7 +288,13 @@ kalman_vec_t
 kalman_get_cont(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
+#ifdef	KALMAN_USE_MATHC
 	return (kal->u_k);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kalman_vec_t v;
+	KAL_VEC_COPYOUT(&v, kal->u_k);
+	return (v);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
 
 /*
@@ -154,7 +311,11 @@ kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(proc_err != NULL);
+#ifdef	KALMAN_USE_MATHC
 	kal->w_k = *proc_err;
+#else
+	KAL_VEC_COPYIN(kal->w_k, proc_err);
+#endif
 }
 
 /*
@@ -164,7 +325,13 @@ kalman_vec_t
 kalman_get_proc_err(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
+#ifdef	KALMAN_USE_MATHC
 	return (kal->w_k);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kalman_vec_t v;
+	KAL_VEC_COPYOUT(&v, kal->w_k);
+	return (v);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
 
 /*
@@ -183,7 +350,11 @@ kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t *cov_mat)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(cov_mat != NULL);
+#ifdef	KALMAN_USE_MATHC
 	kal->P_k = *cov_mat;
+#else
+	KAL_MAT_COPYIN(kal->P_k, cov_mat);
+#endif
 }
 
 /*
@@ -193,7 +364,13 @@ kalman_mat_t
 kalman_get_cov_mat(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
+#ifdef	KALMAN_USE_MATHC
 	return (kal->P_k);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kalman_mat_t m;
+	KAL_MAT_COPYOUT(&m, kal->P_k);
+	return (m);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
 
 /*
@@ -217,7 +394,11 @@ kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(cov_mat_err != NULL);
+#if	KALMAN_USE_MATHC
 	kal->Q_k = *cov_mat_err;
+#else
+	KAL_MAT_COPYIN(kal->Q_k, cov_mat_err);
+#endif
 }
 
 /*
@@ -228,7 +409,13 @@ kalman_mat_t
 kalman_get_cov_mat_err(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
+#ifdef	KALMAN_USE_MATHC
 	return (kal->Q_k);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kalman_mat_t m;
+	KAL_MAT_COPYOUT(&m, kal->Q_k);
+	return (m);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
 
 /*
@@ -244,8 +431,13 @@ kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t *pred_mat)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(pred_mat != NULL);
+#ifdef	KALMAN_USE_MATHC
 	kal->A_k = *pred_mat;
 	mat4_transpose(kal->A_k_T.m, kal->A_k.m);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	KAL_MAT_COPYIN(kal->A_k, pred_mat);
+	m_transp(kal->A_k, kal->A_k_T);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
 
 /*
@@ -255,7 +447,13 @@ kalman_mat_t
 kalman_get_pred_mat(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
+#ifdef	KALMAN_USE_MATHC
 	return (kal->A_k);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kalman_mat_t m;
+	KAL_MAT_COPYOUT(&m, kal->A_k);
+	return (m);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
 
 /*
@@ -277,7 +475,11 @@ kalman_set_cont_mat(kalman_t *kal, const kalman_mat_t *cont_mat)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(cont_mat != NULL);
+#ifdef	KALMAN_USE_MATHC
 	kal->B_k = *cont_mat;
+#else
+	KAL_MAT_COPYIN(kal->B_k, cont_mat);
+#endif
 }
 
 /*
@@ -287,8 +489,16 @@ kalman_mat_t
 kalman_get_cont_mat(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
+#ifdef	KALMAN_USE_MATHC
 	return (kal->B_k);
+#else	/* !defined(KALMAN_USE_MATHC) */
+	kalman_mat_t m;
+	KAL_MAT_COPYOUT(&m, kal->B_k);
+	return (m);
+#endif	/* !defined(KALMAN_USE_MATHC) */
 }
+
+#ifdef	KALMAN_USE_MATHC
 
 static inline void
 mat4_add(mfloat_t outmat4[MAT4_SIZE], const mfloat_t m1[MAT4_SIZE],
@@ -305,6 +515,8 @@ mat4_subtract(mfloat_t outmat4[MAT4_SIZE], const mfloat_t m1[MAT4_SIZE],
 	for (int i = 0; i < MAT4_SIZE; i++)
 		outmat4[i] = m1[i] - m2[i];
 }
+
+#endif	/* KALMAN_USE_MATHC */
 
 /*
  * Performs one step of the Kalman filter, updating the filter's internal
@@ -324,18 +536,87 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
     const kalman_mat_t *measurement_cov_mat,
     const kalman_mat_t *observation_model_p)
 {
-	kalman_vec_t x_k_pred, tmpvec, tmpvec2;
-	kalman_mat_t P_k_pred, tmpmat, tmpmat2;
+	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(measurement != NULL);
+	KAL_ASSERT(measurement_cov_mat != NULL);
+
+#ifndef	KALMAN_USE_MATHC
+	KAL_VEC_COPYIN(kal->m, measurement);
+	KAL_MAT_COPYIN(kal->m_cov_mat, measurement_cov_mat);
+	if (observation_model_p != NULL)
+		KAL_MAT_COPYIN(kal->observation_model, observation_model_p);
+	else
+		m_ident(kal->observation_model);
+	m_transp(kal->observation_model, kal->observation_model_T);
+
+	/*
+	 * Prediction phase:
+	 *
+	 * predicted state vector:
+	 *                      ->
+	 * x' = A  * x    + B * u  + w
+	 *  k    k    k-1    k   k    k
+	 *
+	 * predicted uncertainty:
+	 *                   T
+	 * P' = A  * P    * A  + Q
+	 *  k    k    k-1    k    k
+	 */
+	mv_mlt(kal->A_k, kal->x_k, kal->tmpvec[0]);
+	mv_mlt(kal->B_k, kal->u_k, kal->tmpvec[1]);
+	v_add(kal->tmpvec[0], kal->tmpvec[1], kal->tmpvec[2]);
+	v_add(kal->tmpvec[2], kal->w_k, kal->x_k_pred);
+
+	m_mlt(kal->A_k, kal->P_k, kal->tmpmat[0]);
+	m_mlt(kal->tmpmat[0], kal->A_k_T, kal->tmpmat[1]);
+	m_add(kal->tmpmat[1], kal->Q_k, kal->P_k_pred);
+	/*
+	 * Compute the Kalman gain:
+	 *               T
+	 *         P' * H
+	 *          k    k
+	 * K = -----------------
+	 *                T
+	 *     H  * P' * H  + R
+	 *      k    k    k    k
+	 */
+	/* numerator portion */
+	m_mlt(kal->P_k_pred, kal->observation_model_T, kal->tmpmat[0]);
+	/* denominator portion */
+	m_mlt(kal->observation_model, kal->tmpmat[0], kal->tmpmat[1]);
+	m_add(kal->tmpmat[1], kal->m_cov_mat, kal->tmpmat[2]);
+	m_inverse(kal->tmpmat[2], kal->tmpmat[1]);
+	m_mlt(kal->tmpmat[0], kal->tmpmat[1], kal->K);
+	/*
+	 * Update the estimate via the measurement:
+	 *                /            \
+	 * x  = x' + K * ( z  - H * x'  )
+	 *  k    k        \ k    k   k /
+	 */
+	mv_mlt(kal->observation_model, kal->x_k_pred, kal->tmpvec[0]);
+	v_sub(kal->m, kal->tmpvec[0], kal->tmpvec[1]);
+	mv_mlt(kal->K, kal->tmpvec[1], kal->tmpvec[0]);
+	v_add(kal->x_k_pred, kal->tmpvec[0], kal->x_k);
+	/*
+	 * P  = P' - K * H  * P'
+	 *  k    k        k    k
+	 */
+	m_mlt(kal->K, kal->observation_model, kal->tmpmat[0]);
+	m_mlt(kal->tmpmat[0], kal->P_k_pred, kal->tmpmat[1]);
+	m_sub(kal->P_k_pred, kal->tmpmat[1], kal->P_k);
+
+	KAL_ASSERT3F(kal->P_k->me[0][0], >=, 0);
+	KAL_ASSERT(isfinite(v_get_val(kal->x_k, 0)));
+#else	/* KALMAN_USE_MATHC */
+	kalman_vec_t x_k_pred, tmpvec1, tmpvec2;
+	kalman_mat_t P_k_pred, tmpmat1, tmpmat2;
 	kalman_mat_t K_numer, K_denom, K_denom_inv;
 	kalman_mat_t K = KALMAN_ZERO_MAT;
 	kalman_mat_t observation_model, observation_model_T;
 
-	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(!KALMAN_IS_NULL_VEC(kal->x_k));
 	KAL_ASSERT(!KALMAN_IS_NULL_MAT(kal->A_k));
 	KAL_ASSERT(!KALMAN_IS_NULL_MAT(kal->P_k));
-	KAL_ASSERT(measurement != NULL);
-	KAL_ASSERT(measurement_cov_mat != NULL);
 
 	if (observation_model_p != NULL)
 		observation_model = *observation_model_p;
@@ -355,13 +636,13 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	 * P' = A  * P    * A  + Q
 	 *  k    k    k-1    k    k
 	 */
-	vec4_multiply_mat4(tmpvec.v, kal->x_k.v, kal->A_k.m);
+	vec4_multiply_mat4(tmpvec1.v, kal->x_k.v, kal->A_k.m);
 	vec4_multiply_mat4(tmpvec2.v, kal->u_k.v, kal->B_k.m);
-	vec4_add(x_k_pred.v, tmpvec.v, tmpvec2.v);
+	vec4_add(x_k_pred.v, tmpvec1.v, tmpvec2.v);
 	vec4_add(x_k_pred.v, x_k_pred.v, kal->w_k.v);
 
-	mat4_multiply(tmpmat.m, kal->A_k.m, kal->P_k.m);
-	mat4_multiply(tmpmat2.m, tmpmat.m, kal->A_k_T.m);
+	mat4_multiply(tmpmat1.m, kal->A_k.m, kal->P_k.m);
+	mat4_multiply(tmpmat2.m, tmpmat1.m, kal->A_k_T.m);
 	mat4_add(P_k_pred.m, tmpmat2.m, kal->Q_k.m);
 
 	/*
@@ -377,8 +658,8 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	/* numerator portion */
 	mat4_multiply(K_numer.m, P_k_pred.m, observation_model_T.m);
 	/* denominator portion */
-	mat4_multiply(tmpmat.m, observation_model.m, K_numer.m);
-	mat4_add(K_denom.m, tmpmat.m, measurement_cov_mat->m);
+	mat4_multiply(tmpmat1.m, observation_model.m, K_numer.m);
+	mat4_add(K_denom.m, tmpmat1.m, measurement_cov_mat->m);
 	/*
 	 * Combine the numerator & denominator. Careful about inversions,
 	 * we need to set any elements outside of the state size to unity,
@@ -411,20 +692,22 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	 * x  = x' + K * ( z  - H * x'  )
 	 *  k    k        \ k    k   k /
 	 */
-	vec4_multiply_mat4(tmpvec.v, x_k_pred.v, observation_model.m);
-	vec4_subtract(tmpvec2.v, measurement->v, tmpvec.v);
-	vec4_multiply_mat4(tmpvec.v, tmpvec2.v, K.m);
-	vec4_add(kal->x_k.v, x_k_pred.v, tmpvec.v);
+	vec4_multiply_mat4(tmpvec1.v, x_k_pred.v, observation_model.m);
+	vec4_subtract(tmpvec2.v, measurement->v, tmpvec1.v);
+	vec4_multiply_mat4(tmpvec1.v, tmpvec2.v, K.m);
+	vec4_add(kal->x_k.v, x_k_pred.v, tmpvec1.v);
 	/*
 	 * P  = P' - K * H  * P'
 	 *  k    k        k    k
 	 */
-	mat4_multiply(tmpmat.m, K.m, observation_model.m);
-	mat4_multiply(tmpmat2.m, tmpmat.m, P_k_pred.m);
+	mat4_multiply(tmpmat1.m, K.m, observation_model.m);
+	mat4_multiply(tmpmat2.m, tmpmat1.m, P_k_pred.m);
 	mat4_subtract(kal->P_k.m, P_k_pred.m, tmpmat2.m);
 
-	KAL_ASSERT3F(MAT(kal->P_k, 0, 0), >=, 0);
+	KAL_ASSERT3F(kal->P_k.m[0], >=, 0);
 	KAL_ASSERT(isfinite(KALMAN_VECi(kal->x_k, 0)));
+
+#endif	/* KALMAN_USE_MATHC */
 }
 
 /*
@@ -439,9 +722,6 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 void
 kalman_step_null(kalman_t *kal)
 {
-	kalman_vec_t tmpvec, tmpvec2, x_k;
-	kalman_mat_t tmpmat, tmpmat2;
-
 	KAL_ASSERT(kal != NULL);
 	/*
 	 * In the null update model, our predicition simply becomes the new
@@ -459,14 +739,73 @@ kalman_step_null(kalman_t *kal)
 	 * P  = A  * P    * A  + Q
 	 *  k    k    k-1    k    k
 	 */
-	vec4_multiply_mat4(tmpvec.v, kal->x_k.v, kal->A_k.m);
+#ifndef	KALMAN_USE_MATHC
+	/*
+	 * x_k update
+	 */
+	mv_mlt(kal->A_k, kal->x_k, kal->tmpvec[0]);
+	mv_mlt(kal->B_k, kal->u_k, kal->tmpvec[1]);
+	v_add(kal->tmpvec[0], kal->tmpvec[1], kal->tmpvec[2]);
+	v_add(kal->tmpvec[2], kal->w_k, kal->x_k);
+	/*
+	 * P_k update
+	 */
+	m_mlt(kal->A_k, kal->P_k, kal->tmpmat[0]);
+	m_mlt(kal->tmpmat[0], kal->A_k_T, kal->tmpmat[1]);
+	m_add(kal->tmpmat[1], kal->Q_k, kal->P_k);
+#else	/* defined(KALMAN_USE_MATHC) */
+	kalman_vec_t tmpvec1, tmpvec2, x_k;
+	kalman_mat_t tmpmat1, tmpmat2;
+	/*
+	 * x_k update
+	 */
+	vec4_multiply_mat4(tmpvec1.v, kal->x_k.v, kal->A_k.m);
 	vec4_multiply_mat4(tmpvec2.v, kal->u_k.v, kal->B_k.m);
-	vec4_add(x_k.v, tmpvec.v, tmpvec2.v);
+	vec4_add(x_k.v, tmpvec1.v, tmpvec2.v);
 	vec4_add(kal->x_k.v, x_k.v, kal->w_k.v);
-
-	mat4_multiply(tmpmat.m, kal->A_k.m, kal->P_k.m);
-	mat4_multiply(tmpmat2.m, tmpmat.m, kal->A_k_T.m);
+	/*
+	 * P_k update
+	 */
+	mat4_multiply(tmpmat1.m, kal->A_k.m, kal->P_k.m);
+	mat4_multiply(tmpmat2.m, tmpmat1.m, kal->A_k_T.m);
 	mat4_add(kal->P_k.m, tmpmat2.m, kal->Q_k.m);
+#endif	/* defined(KALMAN_USE_MATHC) */
+}
+
+/*
+ * Takes two measurements and combines them together according to their
+ * variances (sigma^2), producing a new combined measurement and variance.
+ * Use this if you want to update your Kalman filter with multiple
+ * measurements in a single step.
+ *
+ * @param m0 First measurement.
+ * @param var0 Variance of first measurement.
+ * @param m1 Second measurement.
+ * @param var1 Variance of second measurement.
+ * @param m_out Output that will be populated with the combined measurement.
+ * @param var_out Output that will be populated with the combined variance.
+ */
+void
+kalman_combine_measurements(double m0, double var0,
+    double m1, double var1, double *m_out, double *var_out)
+{
+	KAL_ASSERT(m_out != NULL);
+	KAL_ASSERT(var_out != NULL);
+	/*
+	 * Two normally distributed measurements m0 and m1 with variances
+	 * var0 and var1 can be combined using the following equations to
+	 * construct a combined measurement m' and var':
+	 *
+	 *           var0 * (m1 - m0)
+	 * m' = m0 + ----------------
+	 *             var0 + var1
+	 *
+	 *                 var0^2
+	 * var' = var0 - -----------
+	 *               var0 + var1
+	 */
+	*m_out = m0 + (var0 * (m1 - m0)) / (var0 + var1);
+	*var_out = var0 - (var0 * var0) / (var0 + var1);
 }
 
 void
