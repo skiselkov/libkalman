@@ -17,7 +17,8 @@ to provide the underlying matrix math engine.
 2) https://github.com/skiselkov/mathc/
    MathC is a very simple library that provides a bunch of useful
    mathematical operations besides matrices and it has a convenient
-   API.
+   API. The limitation for MathC is that it only supports to
+   4x4 matrices, so libkalman will be limited to 4-dimensional filters.
 
 To use Meschach, use the CMake file included in its repository. This
 will give you a static library that can then be simply linked into your
