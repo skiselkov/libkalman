@@ -40,8 +40,8 @@ CTASSERT(sizeof (Real) == sizeof (double));
 	do { \
 		MAT *m_mat = (mesch_mat); \
 		const kalman_mat_t *k_mat = (kal_mat); \
-		for (unsigned col = 0; col < kal->state_len; col++) { \
-			for (unsigned row = 0; row < kal->state_len; row++) { \
+		for (unsigned col = 0; col < m_mat->n; col++) { \
+			for (unsigned row = 0; row < m_mat->m; row++) { \
 				m_set_val(m_mat, row, col, \
 				    KALMAN_MATxy(*k_mat, col, row)); \
 			} \
@@ -52,8 +52,8 @@ CTASSERT(sizeof (Real) == sizeof (double));
 	do { \
 		kalman_mat_t *k_mat = (kal_mat); \
 		const MAT *m_mat = (mesch_mat); \
-		for (unsigned col = 0; col < kal->state_len; col++) { \
-			for (unsigned row = 0; row < kal->state_len; row++) { \
+		for (unsigned col = 0; col < m_mat->n; col++) { \
+			for (unsigned row = 0; row < m_mat->m; row++) { \
 				KALMAN_MATxy(*k_mat, row, col) = \
 				    m_get_val(m_mat, col, row); \
 			} \
@@ -773,10 +773,10 @@ kalman_step_null(kalman_t *kal)
 }
 
 /*
- * Takes two measurements and combines them together according to their
- * variances (sigma^2), producing a new combined measurement and variance.
- * Use this if you want to update your Kalman filter with multiple
- * measurements in a single step.
+ * Takes two scalar measurements and combines them together according to
+ * their variances (sigma^2), producing a new combined measurement and
+ * variance. Use this if you want to update your Kalman filter with
+ * multiple measurements in a single step.
  *
  * @param m0 First measurement.
  * @param var0 Variance of first measurement.
@@ -786,9 +786,11 @@ kalman_step_null(kalman_t *kal)
  * @param var_out Output that will be populated with the combined variance.
  */
 void
-kalman_combine_measurements(double m0, double var0,
-    double m1, double var1, double *m_out, double *var_out)
+kalman_combine_s(double m0, double var0, double m1, double var1,
+    double *m_out, double *var_out)
 {
+	double k;
+
 	KAL_ASSERT(m_out != NULL);
 	KAL_ASSERT(var_out != NULL);
 	/*
@@ -803,9 +805,92 @@ kalman_combine_measurements(double m0, double var0,
 	 *                 var0^2
 	 * var' = var0 - -----------
 	 *               var0 + var1
+	 *
+	 * Simplifying:
+	 *
+	 * k = var0 / (var0 + var1)
+	 * m' = m0 + k(m1 - m0)
+	 * var' = var0 - k * var0
 	 */
-	*m_out = m0 + (var0 * (m1 - m0)) / (var0 + var1);
-	*var_out = var0 - (var0 * var0) / (var0 + var1);
+	k = var0 / (var0 + var1);
+	*m_out = m0 + k * (m1 - m0);
+	*var_out = var0 - k * var1;
+}
+
+/*
+ * Same as kalman_combine_s, but uses vectors & matrices for the measurements
+ * and covariances.
+ *
+ * @param state_len State length of the measurements. This is the length of
+ *	the vectors and dimension of the covariance matrices.
+ * @param m0 First measurement.
+ * @param var0 Covariance of first measurement.
+ * @param m1 Second measurement.
+ * @param var1 Covariance of second measurement.
+ * @param m_out Output that will be populated with the combined measurement.
+ * @param var_out Output that will be populated with the combined covariance.
+ */
+void kalman_combine_measurements_mat(unsigned state_len,
+    const kalman_vec_t *restrict m0, const kalman_mat_t *restrict var0,
+    const kalman_vec_t *restrict m1, const kalman_mat_t *restrict var1,
+    kalman_vec_t *restrict m_out, kalman_mat_t *restrict var_out)
+{
+	VEC *v_m0, *v_m1, *v_X, *v_Y;
+	MAT *m_var0, *m_var1, *m_X, *m_Y, *K;
+
+	ASSERT(state_len != 0);
+	ASSERT3U(state_len, <=, KALMAN_VEC_LEN);
+	ASSERT(m0 != NULL);
+	ASSERT(var0 != NULL);
+	ASSERT(m1 != NULL);
+	ASSERT(var1 != NULL);
+	ASSERT(m_out != NULL);
+	ASSERT(var_out != NULL);
+
+	v_m0 = v_get(state_len);
+	KAL_VEC_COPYIN(v_m0, m0);
+	m_var0 = m_get(state_len, state_len);
+	KAL_MAT_COPYIN(m_var0, var0);
+	v_m1 = v_get(state_len);
+	KAL_VEC_COPYIN(v_m1, m1);
+	m_var1 = m_get(state_len, state_len);
+	KAL_MAT_COPYIN(m_var1, var1);
+	m_X = m_get(state_len, state_len);
+	m_Y = m_get(state_len, state_len);
+	K = m_get(state_len, state_len);
+	v_X = v_get(state_len);
+	v_Y = v_get(state_len);
+	/*
+	 * K = var0 / (var0 + var1)
+	 */
+	m_add(m_var0, m_var1, m_X);	/* X = var0 + var1 */
+	m_inverse(m_X, m_Y);		/* Y = X^-1 */
+	m_mlt(m_var0, m_Y, K);		/* K = var0 * Y */
+	/*
+	 * m' = m0 + K(m1 - m0)
+	 */
+	v_sub(v_m1, v_m0, v_X);		/* X = m1 - m0 */
+	mv_mlt(K, v_X, v_Y);		/* Y = K * X */
+	v_add(v_m0, v_Y, v_X);		/* X = m0 + Y */
+	KAL_VEC_COPYOUT(m_out, v_X);
+	/*
+	 * var' = var0 - K * var0
+	 */
+	m_mlt(K, m_var0, m_X);		/* X = K * var0 */
+	m_sub(m_var0, m_X, m_Y);	/* Y = var0 - X */
+	KAL_MAT_COPYOUT(var_out, m_Y);
+
+	V_FREE(v_m0);
+	M_FREE(m_var0);
+	V_FREE(v_m1);
+	M_FREE(m_var1);
+
+	M_FREE(m_X);
+	M_FREE(m_Y);
+	M_FREE(K);
+
+	V_FREE(v_X);
+	V_FREE(v_Y);
 }
 
 void

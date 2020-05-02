@@ -203,8 +203,12 @@ void kalman_step_null(kalman_t *kal);
 /*
  * Utility functions
  */
-void kalman_combine_measurements(double m0, double var0,
-    double m1, double var1, double *m_out, double *var_out);
+void kalman_combine_s(double m0, double var0, double m1, double var1,
+    double *m_out, double *var_out);
+void kalman_combine_v(unsigned state_len,
+    const kalman_vec_t *restrict m0, const kalman_mat_t *restrict var0,
+    const kalman_vec_t *restrict m1, const kalman_mat_t *restrict var1,
+    kalman_vec_t *restrict m_out, kalman_mat_t *restrict var_out);
 
 /*
  * Debugging the Kalman filter
