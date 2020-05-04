@@ -830,7 +830,7 @@ kalman_combine_s(double m0, double var0, double m1, double var1,
  * @param m_out Output that will be populated with the combined measurement.
  * @param var_out Output that will be populated with the combined covariance.
  */
-void kalman_combine_measurements_mat(unsigned state_len,
+void kalman_combine_v(unsigned state_len,
     const kalman_vec_t *restrict m0, const kalman_mat_t *restrict var0,
     const kalman_vec_t *restrict m1, const kalman_mat_t *restrict var1,
     kalman_vec_t *restrict m_out, kalman_mat_t *restrict var_out)
