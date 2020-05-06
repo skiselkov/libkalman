@@ -15,12 +15,12 @@ To construct a filter, use ``kalman_alloc`` with the number of state
 variables you wish to track. Before being able to use the filter you need
 to initialize its internal state:
 
-*) Use ``kalman_set_state`` to initialize the filter's initial state vector
-   (x_k).
-*) Use ``kalman_set_cov_mat`` to initialize the filter's initial covariance
-   matrix (P_k).
-*) Use ``kalman_set_pred_mat`` to initialize the filter's prediction matrix
-   (A_k).
+* Use ``kalman_set_state`` to initialize the filter's initial state vector
+  (x_k).
+* Use ``kalman_set_cov_mat`` to initialize the filter's initial covariance
+  matrix (P_k).
+* Use ``kalman_set_pred_mat`` to initialize the filter's prediction matrix
+  (A_k).
 
 This is the minimum amount of setup required to get the filter working.
 See ``kalman.h`` for the other functions available to initialize other
