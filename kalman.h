@@ -35,16 +35,37 @@ extern "C" {
 #endif
 
 /*
- * WARNING: matrices are COLUMN ORDER MAJOR. Use the KALMAN_MATxy macro
- * to access individual elements of the matrix.
- * Also note, although our state is fixed at 6 elements and a 6x6 matrix,
- * this is simply for convenience of operations inside of the library. If
- * your problem requires fewer state parameters to be used, simply set
- * the corresponding vector and matrix elements to 0 to ignore them. Or
- * if you need more state, change the KALMAN_VEC_LEN macro and extend the
- * canned zero/null vector and matrix macros.
+ * Select your preferred real number type using one of the following
+ * defines. If nothing is defined, libkalman defaults to double precision
+ * floating point numbers.
  */
+#if	defined(KALMAN_REAL_FLOAT)
+typedef float kalman_real_t;
+#elif	defined(KALMAN_REAL_LONG_DOUBLE)
+typedef long double kalman_real_t;
+#else
+typedef double kalman_real_t;
+#endif
+
+/*
+ * WARNING: matrices are COLUMN ORDER MAJOR.
+ *
+ * Use the KALMAN_MATxy macro to access individual elements of the matrix.
+ *
+ * Also note, although our state is fixed at 6 elements and a 6x6 matrix,
+ * this is simply for convenience of the C-type interface of the library.
+ * If your problem requires fewer state parameters to be used, simply set
+ * the corresponding vector and matrix elements to 0 to ignore them. Or if
+ * you need more state, set KALMAN_VEC_LEN macro from your compiler
+ * options and (optionally) extend the KALMAN_NULL_VEC, KALMAN_NULL_MAT
+ * and KALMAN_IDENT_MAT macros below. These macros are not used by the
+ * library, they're simply for your convenience, so if you don't use them,
+ * you don't need to modify them and a simple tweak to KALMAN_VEC_LEN will
+ * suffice.
+ */
+#ifndef	KALMAN_VEC_LEN
 #define	KALMAN_VEC_LEN		6
+#endif
 
 #define	KALMAN_VEC(...)		((kalman_vec_t){{__VA_ARGS__}})
 #define	KALMAN_VECi(vec, col)	((vec).v[(col)])
@@ -52,14 +73,14 @@ extern "C" {
 typedef struct kalman_s kalman_t;
 
 typedef struct {
-	double	v[KALMAN_VEC_LEN];
+	kalman_real_t	v[KALMAN_VEC_LEN];
 } kalman_vec_t;
 #define	KALMAN_ZERO_VEC		((kalman_vec_t){{ 0 }})
 #define	KALMAN_NULL_VEC		((kalman_vec_t){{NAN, NAN, NAN, NAN, NAN, NAN}})
 #define	KALMAN_IS_NULL_VEC(vec)	(isnan((vec).v[0]))
 
 typedef struct {
-	double	m[KALMAN_VEC_LEN * KALMAN_VEC_LEN];
+	kalman_real_t	m[KALMAN_VEC_LEN * KALMAN_VEC_LEN];
 } kalman_mat_t;
 #define	KALMAN_ZERO_MAT	((kalman_mat_t){{ 0 }})
 #define	KALMAN_NULL_MAT	((kalman_mat_t){{ \

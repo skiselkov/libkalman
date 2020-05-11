@@ -18,78 +18,91 @@
 
 #include <stdio.h>
 
+#include "Eigen/Dense"
+
 #include "kalman_assert.h"
 #include "kalman.h"
 
-#include "Eigen/Dense"
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
-
-#define	KAL_MAT_COPYIN(eig_mat, kal_mat, dim) \
-	do { \
-		const kalman_mat_t *k_mat = (kal_mat); \
-		for (unsigned col = 0; col < (dim); col++) { \
-			for (unsigned row = 0; row < (dim); row++) { \
-				(eig_mat)(row, col) = \
-				    KALMAN_MATxy(*k_mat, col, row); \
-			} \
-		} \
-	} while (0)
-
-#define	KAL_MAT_COPYOUT(kal_mat, eig_mat, dim) \
-	do { \
-		kalman_mat_t *k_mat = (kal_mat); \
-		memset(k_mat, 0, sizeof (*k_mat)); \
-		for (unsigned col = 0; col < dim; col++) { \
-			for (unsigned row = 0; row < dim; row++) { \
-				KALMAN_MATxy(*k_mat, row, col) = \
-				    (eig_mat)(row, col); \
-			} \
-		} \
-	} while (0)
-
-#define	KAL_VEC_COPYIN(eig_vec, kal_vec, dim) \
-	do { \
-		const kalman_vec_t *k_vec = (kal_vec); \
-		for (unsigned row = 0; row < dim; row++) \
-			(eig_vec)(row) = k_vec->v[row]; \
-	} while (0)
-
-#define	KAL_VEC_COPYOUT(kal_vec, eig_vec, dim) \
-	do { \
-		kalman_vec_t *k_vec = (kal_vec); \
-		memset(k_vec, 0, sizeof (*k_vec)); \
-		for (unsigned row = 0; row < dim; row++) \
-			k_vec->v[row] = (eig_vec)(row); \
-	} while (0)
-
-#define	MAT_INIT_VALUE(eig_mat, dim, value) \
-	do { \
-		for (unsigned row = 0; row < dim; row++) { \
-			for (unsigned col = 0; col < dim; col++) \
-				(eig_mat)(row, col) = (value); \
-		} \
-	} while (0)
-
-#define	VEC_INIT_VALUE(eig_vec, dim, value) \
-	do { \
-		for (unsigned row = 0; row < dim; row++) \
-			(eig_vec)(row) = (value); \
-	} while (0)
+typedef Eigen::Matrix<kalman_real_t, Eigen::Dynamic, Eigen::Dynamic> KalMat;
+typedef Eigen::Matrix<kalman_real_t, Eigen::Dynamic, 1> KalVec;
 
 struct kalman_s {
 	unsigned	state_len;
 
-	VectorXd	x_k;	/* state vector */
-	VectorXd	u_k;	/* control vector */
-	VectorXd	w_k;	/* process error vector */
+	KalVec		x_k;	/* state vector */
+	KalVec		u_k;	/* control vector */
+	KalVec		w_k;	/* process error vector */
 
-	MatrixXd	P_k;	/* Process covariance matrix */
-	MatrixXd	Q_k;	/* Process cov. matrix prediction error */
-	MatrixXd	A_k;	/* State prediction matrix */
-	MatrixXd	B_k;	/* Control matrix */
+	KalMat		P_k;	/* Process covariance matrix */
+	KalMat		Q_k;	/* Process cov. matrix prediction error */
+	KalMat		A_k;	/* State prediction matrix */
+	KalMat		B_k;	/* Control matrix */
 };
 
+/*
+ * A bunch of utility copy-in and copy-out functions to convert between the
+ * C-like kalman_mat_t and kalman_vec_t types and the Eigen-library types.
+ */
+static void
+kalmat_copyin(KalMat &mat, const kalman_mat_t *c_mat, unsigned dim)
+{
+	for (unsigned col = 0; col < dim; col++) {
+		for (unsigned row = 0; row < dim; row++)
+			mat(row, col) = KALMAN_MATxy(*c_mat, col, row);
+	}
+}
+
+static void
+kalmat_copyout(kalman_mat_t *c_mat, const KalMat &mat, unsigned dim)
+{
+	memset(c_mat, 0, sizeof (*c_mat));
+	for (unsigned col = 0; col < dim; col++) {
+		for (unsigned row = 0; row < dim; row++)
+			KALMAN_MATxy(*c_mat, row, col) = mat(row, col);
+	}
+}
+
+static void
+kalvec_copyin(KalVec &vec, const kalman_vec_t *c_vec, unsigned dim)
+{
+	for (unsigned row = 0; row < dim; row++)
+		vec(row) = c_vec->v[row];
+}
+
+static void
+kalvec_copyout(kalman_vec_t *c_vec, const KalVec &vec, unsigned dim)
+{
+	memset(c_vec, 0, sizeof (*c_vec));
+	for (unsigned row = 0; row < dim; row++)
+		c_vec->v[row] = vec(row);
+}
+
+static void
+kalmat_init_value(KalMat &mat, unsigned dim, kalman_real_t value)
+{
+	for (unsigned row = 0; row < dim; row++) {
+		for (unsigned col = 0; col < dim; col++)
+			mat(row, col) = value;
+	}
+}
+
+static void
+kalvec_init_value(KalVec &vec, unsigned dim, kalman_real_t value)
+{
+	for (unsigned row = 0; row < dim; row++)
+		vec(row) = value;
+}
+
+/*
+ * Allocates and returns a new Kalman filter. Use `kalman_free' to deallocate
+ * the filter and all its associated resources.
+ *
+ * @param state_len Length of the filter's state vector (i.e. how many
+ *	variables you want the filter to work on). This must be greater
+ *	than zero and equal to or less than KALMAN_VEC_LEN (6 by default).
+ *	If you need a Kalman filter that can track more variables, change
+ *	the KALMAN_VEC_LEN macro defined in `kalman.h'.
+ */
 kalman_t *
 kalman_alloc(unsigned state_len)
 {
@@ -104,27 +117,34 @@ kalman_alloc(unsigned state_len)
 	 * to NAN values. This forces the caller to set them before calling
 	 * kalman_step for the first time.
 	 */
-	kal->x_k = VectorXd(state_len);
-	VEC_INIT_VALUE(kal->x_k, state_len, NAN);
-	kal->u_k = VectorXd::Zero(state_len);
-	kal->w_k = VectorXd::Zero(state_len);
+	kal->x_k = KalVec(state_len);
+	kalvec_init_value(kal->x_k, state_len, NAN);
+	kal->u_k = KalVec::Zero(state_len);
+	kal->w_k = KalVec::Zero(state_len);
 
-	kal->P_k = MatrixXd(state_len, state_len);
-	MAT_INIT_VALUE(kal->P_k, state_len, NAN);
-	kal->Q_k = MatrixXd::Zero(state_len, state_len);
-	kal->A_k = MatrixXd(state_len, state_len);
-	MAT_INIT_VALUE(kal->A_k, state_len, NAN);
-	kal->B_k = MatrixXd::Zero(state_len, state_len);
+	kal->P_k = KalMat(state_len, state_len);
+	kalmat_init_value(kal->P_k, state_len, NAN);
+	kal->Q_k = KalMat::Zero(state_len, state_len);
+	kal->A_k = KalMat(state_len, state_len);
+	kalmat_init_value(kal->A_k, state_len, NAN);
+	kal->B_k = KalMat::Zero(state_len, state_len);
 
 	return (kal);
 }
 
+/*
+ * Destroys a Kalman filter previous allocated using kalman_alloc.
+ */
 void
 kalman_free(kalman_t *kal)
 {
 	delete kal;
 }
 
+/*
+ * Returns the state vector length of an allocated Kalman filter. This is
+ * also equal to the number of rows and columns in the filter's matrices.
+ */
 unsigned
 kalman_get_state_len(const kalman_t *kal)
 {
@@ -147,7 +167,7 @@ kalman_set_state(kalman_t *kal, const kalman_vec_t *state)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(state != NULL);
-	KAL_VEC_COPYIN(kal->x_k, state, kal->state_len);
+	kalvec_copyin(kal->x_k, state, kal->state_len);
 }
 
 /*
@@ -158,7 +178,7 @@ kalman_get_state(const kalman_t *kal)
 {
 	KAL_ASSERT(kal != NULL);
 	kalman_vec_t v;
-	KAL_VEC_COPYOUT(&v, kal->x_k, kal->state_len);
+	kalvec_copyout(&v, kal->x_k, kal->state_len);
 	return (v);
 }
 
@@ -178,7 +198,7 @@ kalman_set_cont(kalman_t *kal, const kalman_vec_t *control)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(control != NULL);
-	KAL_VEC_COPYIN(kal->u_k, control, kal->state_len);
+	kalvec_copyin(kal->u_k, control, kal->state_len);
 }
 
 /*
@@ -189,7 +209,7 @@ kalman_get_cont(const kalman_t *kal)
 {
 	kalman_vec_t v;
 	KAL_ASSERT(kal != NULL);
-	KAL_VEC_COPYOUT(&v, kal->u_k, kal->state_len);
+	kalvec_copyout(&v, kal->u_k, kal->state_len);
 	return (v);
 }
 
@@ -207,7 +227,7 @@ kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(proc_err != NULL);
-	KAL_VEC_COPYIN(kal->w_k, proc_err, kal->state_len);
+	kalvec_copyin(kal->w_k, proc_err, kal->state_len);
 }
 
 /*
@@ -218,7 +238,7 @@ kalman_get_proc_err(const kalman_t *kal)
 {
 	kalman_vec_t v;
 	KAL_ASSERT(kal != NULL);
-	KAL_VEC_COPYOUT(&v, kal->w_k, kal->state_len);
+	kalvec_copyout(&v, kal->w_k, kal->state_len);
 	return (v);
 }
 
@@ -238,7 +258,7 @@ kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t *cov_mat)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(cov_mat != NULL);
-	KAL_MAT_COPYIN(kal->P_k, cov_mat, kal->state_len);
+	kalmat_copyin(kal->P_k, cov_mat, kal->state_len);
 }
 
 /*
@@ -249,7 +269,7 @@ kalman_get_cov_mat(const kalman_t *kal)
 {
 	kalman_mat_t m;
 	KAL_ASSERT(kal != NULL);
-	KAL_MAT_COPYOUT(&m, kal->P_k, kal->state_len);
+	kalmat_copyout(&m, kal->P_k, kal->state_len);
 	return (m);
 }
 
@@ -274,7 +294,7 @@ kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(cov_mat_err != NULL);
-	KAL_MAT_COPYIN(kal->Q_k, cov_mat_err, kal->state_len);
+	kalmat_copyin(kal->Q_k, cov_mat_err, kal->state_len);
 }
 
 /*
@@ -286,7 +306,7 @@ kalman_get_cov_mat_err(const kalman_t *kal)
 {
 	kalman_mat_t m;
 	KAL_ASSERT(kal != NULL);
-	KAL_MAT_COPYOUT(&m, kal->Q_k, kal->state_len);
+	kalmat_copyout(&m, kal->Q_k, kal->state_len);
 	return (m);
 }
 
@@ -303,7 +323,7 @@ kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t *pred_mat)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(pred_mat != NULL);
-	KAL_MAT_COPYIN(kal->A_k, pred_mat, kal->state_len);
+	kalmat_copyin(kal->A_k, pred_mat, kal->state_len);
 }
 
 /*
@@ -314,7 +334,7 @@ kalman_get_pred_mat(const kalman_t *kal)
 {
 	kalman_mat_t m;
 	KAL_ASSERT(kal != NULL);
-	KAL_MAT_COPYOUT(&m, kal->A_k, kal->state_len);
+	kalmat_copyout(&m, kal->A_k, kal->state_len);
 	return (m);
 }
 
@@ -337,7 +357,7 @@ kalman_set_cont_mat(kalman_t *kal, const kalman_mat_t *cont_mat)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(cont_mat != NULL);
-	KAL_MAT_COPYIN(kal->B_k, cont_mat, kal->state_len);
+	kalmat_copyin(kal->B_k, cont_mat, kal->state_len);
 }
 
 /*
@@ -348,7 +368,7 @@ kalman_get_cont_mat(const kalman_t *kal)
 {
 	kalman_mat_t m;
 	KAL_ASSERT(kal != NULL);
-	KAL_MAT_COPYOUT(&m, kal->B_k, kal->state_len);
+	kalmat_copyout(&m, kal->B_k, kal->state_len);
 	return (m);
 }
 
@@ -375,14 +395,14 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	KAL_ASSERT(!isnan(kal->P_k(0, 0)));
 	KAL_ASSERT(!isnan(kal->A_k(0, 0)));
 
-	VectorXd m(kal->state_len);
-	MatrixXd m_cov_mat(kal->state_len, kal->state_len);
-	MatrixXd obsv_model(kal->state_len, kal->state_len);
-	MatrixXd obsv_model_T(kal->state_len, kal->state_len);
-	VectorXd x_k_pred(kal->state_len);
-	MatrixXd P_k_pred(kal->state_len, kal->state_len);
-	MatrixXd tmpmat(kal->state_len, kal->state_len);
-	MatrixXd K(kal->state_len, kal->state_len);
+	KalVec m(kal->state_len);
+	KalMat m_cov_mat(kal->state_len, kal->state_len);
+	KalMat obsv_model(kal->state_len, kal->state_len);
+	KalMat obsv_model_T(kal->state_len, kal->state_len);
+	KalVec x_k_pred(kal->state_len);
+	KalMat P_k_pred(kal->state_len, kal->state_len);
+	KalMat tmpmat(kal->state_len, kal->state_len);
+	KalMat K(kal->state_len, kal->state_len);
 
 	/*
 	 * Prediction phase:
@@ -410,11 +430,11 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	KAL_ASSERT(!KALMAN_IS_NULL_MAT(*measurement_cov_mat));
 	KAL_ASSERT(measurement_cov_mat != NULL);
 
-	KAL_VEC_COPYIN(m, measurement, kal->state_len);
-	KAL_MAT_COPYIN(m_cov_mat, measurement_cov_mat, kal->state_len);
+	kalvec_copyin(m, measurement, kal->state_len);
+	kalmat_copyin(m_cov_mat, measurement_cov_mat, kal->state_len);
 
 	if (observation_model_p != NULL)
-		KAL_MAT_COPYIN(obsv_model, observation_model_p, kal->state_len);
+		kalmat_copyin(obsv_model, observation_model_p, kal->state_len);
 	else
 		obsv_model.setIdentity();
 	obsv_model_T = obsv_model.transpose();
@@ -523,10 +543,10 @@ void kalman_combine_v(unsigned state_len,
 	KAL_ASSERT(state_len != 0);
 	KAL_ASSERT(state_len <= KALMAN_VEC_LEN);
 
-	VectorXd m0(state_len), m1(state_len), m(state_len);
-	MatrixXd cov0(state_len, state_len), cov1(state_len, state_len);
-	MatrixXd cov(state_len, state_len);
-	MatrixXd K(state_len, state_len);
+	KalVec m0(state_len), m1(state_len), m(state_len);
+	KalMat cov0(state_len, state_len), cov1(state_len, state_len);
+	KalMat cov(state_len, state_len);
+	KalMat K(state_len, state_len);
 
 	KAL_ASSERT(m0_in != NULL);
 	KAL_ASSERT(!KALMAN_IS_NULL_VEC(*m0_in));
@@ -539,23 +559,23 @@ void kalman_combine_v(unsigned state_len,
 	KAL_ASSERT(m_out != NULL);
 	KAL_ASSERT(cov_out != NULL);
 
-	KAL_VEC_COPYIN(m0, m0_in, state_len);
-	KAL_MAT_COPYIN(cov0, cov0_in, state_len);
-	KAL_VEC_COPYIN(m1, m1_in, state_len);
-	KAL_MAT_COPYIN(cov1, cov1_in, state_len);
+	kalvec_copyin(m0, m0_in, state_len);
+	kalmat_copyin(cov0, cov0_in, state_len);
+	kalvec_copyin(m1, m1_in, state_len);
+	kalmat_copyin(cov1, cov1_in, state_len);
 
 	K = cov0 * (cov0 + cov1).inverse();
 	/*
 	 * m' = m0 + K(m1 - m0)
 	 */
 	m = m0 + K * (m1 - m0);
-	KAL_VEC_COPYOUT(m_out, m, state_len);
+	kalvec_copyout(m_out, m, state_len);
 	KAL_ASSERT(!KALMAN_IS_NULL_VEC(*m_out));
 	/*
 	 * var' = var0 - K * var0
 	 */
 	cov = cov0 - K * cov0;
-	KAL_MAT_COPYOUT(cov_out, cov, state_len);
+	kalmat_copyout(cov_out, cov, state_len);
 	KAL_ASSERT(!KALMAN_IS_NULL_MAT(*cov_out));
 }
 
@@ -564,8 +584,13 @@ kalman_print_vec(const char *name, const kalman_vec_t *vec, unsigned state_len)
 {
 	printf("%s = (", name);
 	for (unsigned i = 0; i < state_len; i++) {
-		printf("%-11.5f%s", KALMAN_VECi(*vec, i),
+#ifdef	KALMAN_REAL_LONG_DOUBLE
+		printf("%11.4Lf%s", KALMAN_VECi(*vec, i),
 		    (i + 1 < state_len) ? " " : "");
+#else	/* !defined(KALMAN_REAL_LONG_DOUBLE) */
+		printf("%11.4f%s", KALMAN_VECi(*vec, i),
+		    (i + 1 < state_len) ? " " : "");
+#endif	/* !defined(KALMAN_REAL_LONG_DOUBLE) */
 	}
 	printf(")\n");
 }
@@ -584,8 +609,13 @@ kalman_print_mat(const char *name, const kalman_mat_t *mat, unsigned state_len)
 		if (r > 0)
 			printf("%s", leadspace);
 		for (unsigned c = 0; c < state_len; c++) {
-			printf("%-11.5f%s", KALMAN_MATxy(*mat, c, r),
+#ifdef	KALMAN_REAL_LONG_DOUBLE
+			printf("%11.4Lf%s", KALMAN_MATxy(*mat, c, r),
 			    (c + 1 < state_len) ? " " : "");
+#else	/* !defined(KALMAN_REAL_LONG_DOUBLE) */
+			printf("%11.4f%s", KALMAN_MATxy(*mat, c, r),
+			    (c + 1 < state_len) ? " " : "");
+#endif	/* !defined(KALMAN_REAL_LONG_DOUBLE) */
 		}
 		printf(")\n");
 	}
