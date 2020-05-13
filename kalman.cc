@@ -223,7 +223,7 @@ kalman_get_cont(const kalman_t *kal)
  * of predicting the next state of the system.
  */
 void
-kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err)
+kalman_set_proc_noise(kalman_t *kal, const kalman_vec_t *proc_err)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(proc_err != NULL);
@@ -234,7 +234,7 @@ kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err)
  * Returns the Kalman filter's process error vector.
  */
 kalman_vec_t
-kalman_get_proc_err(const kalman_t *kal)
+kalman_get_proc_noise(const kalman_t *kal)
 {
 	kalman_vec_t v;
 	KAL_ASSERT(kal != NULL);
@@ -243,7 +243,7 @@ kalman_get_proc_err(const kalman_t *kal)
 }
 
 /*
- * Sets the Kalman filter's current process covariance matrix.
+ * Sets the Kalman filter's current covariance matrix (P).
  *
  * Theoretical background:
  * The process covariance matrix P_k represents the uncertainty
@@ -262,7 +262,7 @@ kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t *cov_mat)
 }
 
 /*
- * Returns the Kalman filter's current process covariance matrix.
+ * Returns the Kalman filter's current covariance matrix.
  */
 kalman_mat_t
 kalman_get_cov_mat(const kalman_t *kal)
@@ -274,23 +274,10 @@ kalman_get_cov_mat(const kalman_t *kal)
 }
 
 /*
- * Sets the Kalman filter's current covariance matrix prediction error.
- *
- * Theoretical background:
- * In the prediction step, the Kalman filter predicts the next process
- * covariance matrix (i.e. "process uncertainty"). During this stage,
- * we may want to add extra uncertainty to the predictor. For example,
- * if we want to keep the predictor from reaching an eternal "low uncertainty"
- * from its own predictions, thus excessively relying on predictions, instead
- * of measurements, we can add extra uncertainty each prediction step.
- * In essence, this means the predictor is becoming more uncertain about
- * the real state of the system if it keeps on relying on the predictions
- * a lot. This in turn will mean that measurements will, by comparison, start
- * having more of an effect, thus resulting in faster response times to
- * changes in external conditions.
+ * Sets the Kalman filter's process noise covariance matrix (Q).
  */
 void
-kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err)
+kalman_set_proc_noise_cov(kalman_t *kal, const kalman_mat_t *cov_mat_err)
 {
 	KAL_ASSERT(kal != NULL);
 	KAL_ASSERT(cov_mat_err != NULL);
@@ -298,11 +285,10 @@ kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err)
 }
 
 /*
- * Returns the Kalman filter's process covariance covariance matrix
- * prediction error.
+ * Returns the Kalman filter's process noise covariance matrix.
  */
 kalman_mat_t
-kalman_get_cov_mat_err(const kalman_t *kal)
+kalman_get_proc_noise_cov(const kalman_t *kal)
 {
 	kalman_mat_t m;
 	KAL_ASSERT(kal != NULL);
@@ -466,16 +452,6 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	KAL_ASSERT3F(kal->P_k(0, 0), >=, 0);
 	KAL_ASSERT(isfinite(kal->x_k(0)));
 }
-
-/*
- * This function is the null-update version of kalman_step. It can be used
- * for cases where we want to step the filter's prediction forward by some
- * fixed time quantum, but we don't have a new measurement to incorporate.
- * So we simply evolve the filter forward based on the prediction parameters.
- * This is effectively the same as kalman_step with an infinite covariance
- * (i.e. measured value is completely unreliable and thus only the
- * prediction is used).
- */
 
 /*
  * Takes two scalar measurements and combines them together according to

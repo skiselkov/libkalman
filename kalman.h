@@ -67,36 +67,93 @@ typedef double kalman_real_t;
 #define	KALMAN_VEC_LEN		6
 #endif
 
-#define	KALMAN_VEC(...)		((kalman_vec_t){{__VA_ARGS__}})
+#define	KALMAN_VEC(...)		((kalman_vec_t){{{__VA_ARGS__}}})
 #define	KALMAN_VECi(vec, col)	((vec).v[(col)])
 
 typedef struct kalman_s kalman_t;
 
 typedef struct {
-	kalman_real_t	v[KALMAN_VEC_LEN];
+	union {
+		kalman_real_t		v[KALMAN_VEC_LEN];
+		struct {
+			kalman_real_t	x;
+			kalman_real_t	y;
+			kalman_real_t	z;
+			kalman_real_t	p;
+			kalman_real_t	q;
+			kalman_real_t	r;
+		};
+	};
 } kalman_vec_t;
-#define	KALMAN_ZERO_VEC		((kalman_vec_t){{ 0 }})
-#define	KALMAN_NULL_VEC		((kalman_vec_t){{NAN, NAN, NAN, NAN, NAN, NAN}})
+#define	KALMAN_ZERO_VEC		((kalman_vec_t){{{ 0 }}})
+#define	KALMAN_NULL_VEC \
+	((kalman_vec_t){{{NAN, NAN, NAN, NAN, NAN, NAN}}})
 #define	KALMAN_IS_NULL_VEC(vec)	(isnan((vec).v[0]))
 
 typedef struct {
-	kalman_real_t	m[KALMAN_VEC_LEN * KALMAN_VEC_LEN];
+	union {
+		kalman_real_t		m[KALMAN_VEC_LEN * KALMAN_VEC_LEN];
+		struct {
+			/* first column */
+			kalman_real_t	m11;
+			kalman_real_t	m21;
+			kalman_real_t	m31;
+			kalman_real_t	m41;
+			kalman_real_t	m51;
+			kalman_real_t	m61;
+			/* second column */
+			kalman_real_t	m12;
+			kalman_real_t	m22;
+			kalman_real_t	m32;
+			kalman_real_t	m42;
+			kalman_real_t	m52;
+			kalman_real_t	m62;
+			/* third column */
+			kalman_real_t	m13;
+			kalman_real_t	m23;
+			kalman_real_t	m33;
+			kalman_real_t	m43;
+			kalman_real_t	m53;
+			kalman_real_t	m63;
+			/* fourth column */
+			kalman_real_t	m14;
+			kalman_real_t	m24;
+			kalman_real_t	m34;
+			kalman_real_t	m44;
+			kalman_real_t	m54;
+			kalman_real_t	m64;
+			/* five column */
+			kalman_real_t	m15;
+			kalman_real_t	m25;
+			kalman_real_t	m35;
+			kalman_real_t	m45;
+			kalman_real_t	m55;
+			kalman_real_t	m65;
+			/* sixth column */
+			kalman_real_t	m16;
+			kalman_real_t	m26;
+			kalman_real_t	m36;
+			kalman_real_t	m46;
+			kalman_real_t	m56;
+			kalman_real_t	m66;
+		};
+	};
 } kalman_mat_t;
-#define	KALMAN_ZERO_MAT	((kalman_mat_t){{ 0 }})
-#define	KALMAN_NULL_MAT	((kalman_mat_t){{ \
+#define	KALMAN_ZERO_MAT	((kalman_mat_t){{{ 0 }}})
+#define	KALMAN_NULL_MAT	((kalman_mat_t){{{ \
 	NAN, NAN, NAN, NAN, NAN, NAN, \
 	NAN, NAN, NAN, NAN, NAN, NAN, \
 	NAN, NAN, NAN, NAN, NAN, NAN, \
 	NAN, NAN, NAN, NAN, NAN, NAN, \
 	NAN, NAN, NAN, NAN, NAN, NAN, \
-	NAN, NAN, NAN, NAN, NAN, NAN}})
-#define	KALMAN_IDENT_MAT ((kalman_mat_t){{ \
+	NAN, NAN, NAN, NAN, NAN, NAN}}})
+#define	KALMAN_IDENT_MAT ((kalman_mat_t){{{ \
 	1, 0, 0, 0, 0, 0, \
 	0, 1, 0, 0, 0, 0, \
 	0, 0, 1, 0, 0, 0, \
 	0, 0, 0, 1, 0, 0, \
 	0, 0, 0, 0, 1, 0, \
-	0, 0, 0, 0, 0, 1 }})
+	0, 0, 0, 0, 0, 1 }}})
 #define	KALMAN_IS_NULL_MAT(mat)	(isnan((mat).m[0]))
 
 #define	KALMAN_MATxy(mat, col, row)	\
@@ -107,37 +164,37 @@ typedef struct {
  * into the appropriate by-column internal representation.
  */
 #define	KALMAN_MAT2_BYROW(row1col1, row1col2, row2col1, row2col2) \
-	((kalman_mat_t){{ \
+	((kalman_mat_t){{{ \
 	row1col1,	row2col1,	0,	0,	0,	0, \
-	row1col2,	row2col2 }})
+	row1col2,	row2col2 }}})
 #define	KALMAN_MAT3_BYROW(\
     row1col1, row1col2, row1col3, \
     row2col1, row2col2, row2col3, \
-    row3col1, row3col2, row3col3) ((kalman_mat_t){{ \
+    row3col1, row3col2, row3col3) ((kalman_mat_t){{{ \
 	row1col1,	row2col1,	row3col1,	0,	0,	0, \
 	row1col2,	row2col2,	row3col2,	0,	0,	0, \
-	row1col3,	row2col3,	row3col3}})
+	row1col3,	row2col3,	row3col3}}})
 #define	KALMAN_MAT4_BYROW(\
     row1col1, row1col2, row1col3, row1col4, \
     row2col1, row2col2, row2col3, row2col4, \
     row3col1, row3col2, row3col3, row3col4, \
-    row4col1, row4col2, row4col3, row4col4) ((kalman_mat_t){{ \
+    row4col1, row4col2, row4col3, row4col4) ((kalman_mat_t){{{ \
 	row1col1, row2col1, row3col1, row4col1, 0, 0, \
 	row1col2, row2col2, row3col2, row4col2, 0, 0, \
 	row1col3, row2col3, row3col3, row4col3, 0, 0, \
-	row1col4, row2col4, row3col4, row4col4 }})
+	row1col4, row2col4, row3col4, row4col4 }}})
 #define	KALMAN_MAT5_BYROW(\
     row1col1, row1col2, row1col3, row1col4, row1col5, \
     row2col1, row2col2, row2col3, row2col4, row2col5, \
     row3col1, row3col2, row3col3, row3col4, row3col5, \
     row4col1, row4col2, row4col3, row4col4, row4col5, \
     row5col1, row5col2, row5col3, row5col4, row5col5) \
-    ((kalman_mat_t){{ \
+    ((kalman_mat_t){{{ \
 	row1col1, row2col1, row3col1, row4col1, row5col1, 0, \
 	row1col2, row2col2, row3col2, row4col2, row5col2, 0, \
 	row1col3, row2col3, row3col3, row4col3, row5col3, 0, \
 	row1col4, row2col4, row3col4, row4col4, row5col4, 0, \
-	row1col5, row2col5, row3col5, row4col5, row5col5, 0}})
+	row1col5, row2col5, row3col5, row4col5, row5col5, 0}}})
 #define	KALMAN_MAT6_BYROW(\
     row1col1, row1col2, row1col3, row1col4, row1col5, row1col6, \
     row2col1, row2col2, row2col3, row2col4, row2col5, row2col6, \
@@ -145,13 +202,13 @@ typedef struct {
     row4col1, row4col2, row4col3, row4col4, row4col5, row4col6, \
     row5col1, row5col2, row5col3, row5col4, row5col5, row5col6, \
     row6col1, row6col2, row6col3, row6col4, row6col5, row6col6) \
-    ((kalman_mat_t){{ \
+    ((kalman_mat_t){{{ \
 	row1col1, row2col1, row3col1, row4col1, row5col1, row6col1, \
 	row1col2, row2col2, row3col2, row4col2, row5col2, row6col2, \
 	row1col3, row2col3, row3col3, row4col3, row5col3, row6col3, \
 	row1col4, row2col4, row3col4, row4col4, row5col4, row6col4, \
 	row1col5, row2col5, row3col5, row4col5, row5col5, row6col5, \
-	row1col6, row2col6, row3col6, row4col6, row5col6, row6col6 }})
+	row1col6, row2col6, row3col6, row4col6, row5col6, row6col6 }}})
 /*
  * Allocation & destruction of the filter.
  */
@@ -166,16 +223,16 @@ void kalman_set_state(kalman_t *kal, const kalman_vec_t *state);
 kalman_vec_t kalman_get_state(const kalman_t *kal);
 void kalman_set_cont(kalman_t *kal, const kalman_vec_t *control);
 kalman_vec_t kalman_get_cont(const kalman_t *kal);
-void kalman_set_proc_err(kalman_t *kal, const kalman_vec_t *proc_err);
-kalman_vec_t kalman_get_proc_err(const kalman_t *kal);
+void kalman_set_proc_noise(kalman_t *kal, const kalman_vec_t *proc_err);
+kalman_vec_t kalman_get_proc_noise(const kalman_t *kal);
 
 /*
  * Matrices
  */
 void kalman_set_cov_mat(kalman_t *kal, const kalman_mat_t *cov_mat);
 kalman_mat_t kalman_get_cov_mat(const kalman_t *kal);
-void kalman_set_cov_mat_err(kalman_t *kal, const kalman_mat_t *cov_mat_err);
-kalman_mat_t kalman_get_cov_mat_err(const kalman_t *kal);
+void kalman_set_proc_noise_cov(kalman_t *kal, const kalman_mat_t *cov_mat_err);
+kalman_mat_t kalman_get_proc_noise_cov(const kalman_t *kal);
 
 void kalman_set_pred_mat(kalman_t *kal, const kalman_mat_t *pred_mat);
 kalman_mat_t kalman_get_pred_mat(const kalman_t *kal);
