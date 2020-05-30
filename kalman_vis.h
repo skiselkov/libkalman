@@ -44,6 +44,8 @@ void kalman_vis_open(kalman_vis_t *vis);
 bool kalman_vis_is_open(const kalman_vis_t *vis);
 void kalman_vis_set_decimals(kalman_vis_t *vis, unsigned state_var,
     unsigned decimals);
+void kalman_vis_set_label(kalman_vis_t *vis, unsigned state_var,
+    const char *label);
 void kalman_vis_set_cov_precision(kalman_vis_t *vis, unsigned decimals);
 
 #ifdef	__cplusplus

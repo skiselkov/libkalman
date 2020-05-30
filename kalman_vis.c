@@ -56,9 +56,13 @@ struct kalman_vis_s {
 	mt_cairo_render_t	*mtcr;		/* immutable */
 	XPLMWindowID		win;		/* immutable */
 	win_resize_ctl_t	winctl;		/* immutable */
+
 	mutex_t			lock;
-	list_t			samples;	/* protected by lock */
-	kalman_mat_t		cov;		/* protected by lock */
+	/* protected by lock */
+	list_t			samples;
+	kalman_mat_t		cov;
+	char			labels[KALMAN_VEC_LEN][128];
+
 	unsigned		decimals[KALMAN_VEC_LEN];	/* atomic */
 	unsigned		cov_precision;	/* atomic */
 };
@@ -96,7 +100,7 @@ win_draw(XPLMWindowID win, void *refcon)
 }
 
 static void
-render_graph(cairo_t *cr, unsigned w, kalman_vis_t *vis, unsigned idx)
+render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 {
 	char buf[32];
 	int i;
@@ -111,11 +115,11 @@ render_graph(cairo_t *cr, unsigned w, kalman_vis_t *vis, unsigned idx)
 	KAL_ASSERT(list_count(&vis->samples) != 0);
 
 	cairo_save(cr);
-	cairo_translate(cr, w - GRAPH_WIDTH, (idx + 0.5) * GRAPH_HEIGHT);
+	cairo_translate(cr, GRAPH_DATA_WIDTH, (idx + 0.5) * GRAPH_HEIGHT);
 	cairo_rectangle(cr, 0.5, -GRAPH_HEIGHT / 2 + 0.5,
-	    GRAPH_WIDTH, GRAPH_HEIGHT);
+	    GRAPH_WIDTH - 1, GRAPH_HEIGHT - 1);
 	cairo_rectangle(cr, -GRAPH_DATA_WIDTH + 0.5, -GRAPH_HEIGHT / 2 + 0.5,
-	    GRAPH_DATA_WIDTH, GRAPH_HEIGHT);
+	    GRAPH_DATA_WIDTH - 1, GRAPH_HEIGHT - 1);
 	cairo_stroke(cr);
 
 	/* Determine min/max values for this graph */
@@ -186,6 +190,28 @@ render_graph(cairo_t *cr, unsigned w, kalman_vis_t *vis, unsigned idx)
 	    GRAPH_HEIGHT / 2 - te.height - te.y_bearing - 10);
 	cairo_show_text(cr, buf);
 
+	/* Draw the label */
+	if (strlen(vis->labels[idx]) != 0) {
+		enum { MARGIN = 2 };
+
+		cairo_text_extents(cr, vis->labels[idx], &te);
+
+		cairo_set_source_rgb(cr, 0.85, 0.85, 0.85);
+		cairo_rectangle(cr, 1, -GRAPH_HEIGHT / 2 + 1,
+		    te.width + 2 * MARGIN, te.height + 2 * MARGIN);
+		cairo_fill(cr);
+
+		cairo_set_source_rgb(cr, 0, 0, 0);
+		cairo_rectangle(cr, 0.5, -GRAPH_HEIGHT / 2 + 0.5,
+		    te.width + 2 * MARGIN, te.height + 2 * MARGIN);
+		cairo_stroke(cr);
+
+		cairo_set_source_rgb(cr, 0, 0, 0);
+		cairo_move_to(cr, MARGIN, -GRAPH_HEIGHT / 2 + MARGIN -
+		    te.y_bearing);
+		cairo_show_text(cr, vis->labels[idx]);
+	}
+
 	cairo_restore(cr);
 }
 
@@ -196,6 +222,9 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 
 	KAL_ASSERT(cr != NULL);
 	KAL_ASSERT(vis != NULL);
+
+	cairo_save(cr);
+	cairo_translate(cr, GRAPH_DATA_WIDTH + GRAPH_WIDTH, 0);
 
 	cairo_text_extents(cr, "Covariance", &te);
 	cairo_move_to(cr,
@@ -216,6 +245,8 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 			cairo_show_text(cr, buf);
 		}
 	}
+
+	cairo_restore(cr);
 }
 
 static void
@@ -238,7 +269,7 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 
 	if (list_count(&vis->samples) != 0) {
 		for (unsigned i = 0; i < vis->state_len; i++)
-			render_graph(cr, w, vis, i);
+			render_graph(cr, vis, i);
 		render_cov(cr, vis);
 	} else {
 		cairo_text_extents_t te;
@@ -370,6 +401,17 @@ kalman_vis_set_decimals(kalman_vis_t *vis, unsigned state_var,
 	KAL_ASSERT(vis != NULL);
 	KAL_ASSERT3U(state_var, <, vis->state_len);
 	vis->decimals[state_var] = decimals;
+}
+
+void
+kalman_vis_set_label(kalman_vis_t *vis, unsigned state_var, const char *label)
+{
+	KAL_ASSERT(vis != NULL);
+	KAL_ASSERT3U(state_var, <, vis->state_len);
+	KAL_ASSERT(label != NULL);
+	mutex_enter(&vis->lock);
+	strlcpy(vis->labels[state_var], label, sizeof (vis->labels[state_var]));
+	mutex_exit(&vis->lock);
 }
 
 void
