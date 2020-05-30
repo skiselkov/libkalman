@@ -39,7 +39,8 @@
 #define	GRAPH_WIDTH		600
 #define	GRAPH_HEIGHT		120
 #define	GRAPH_DATA_WIDTH	80
-#define	COV_COLUMN_WIDTH	120
+#define	COV_COLUMN		100
+#define	COV_ROW			GRAPH_HEIGHT
 #define	RENDER_FPS		20
 #define	MAX_SAMPLES		200
 #define	PX_PER_SAMPLE		3
@@ -228,9 +229,10 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 
 	cairo_text_extents(cr, "Covariance", &te);
 	cairo_move_to(cr,
-	    (vis->state_len * COV_COLUMN_WIDTH) / 2 - te.width / 2, 20);
+	    (vis->state_len * COV_COLUMN) / 2 - te.width / 2, 20);
 	cairo_show_text(cr, "Covariance");
 
+	cairo_set_font_size(cr, 18);
 	for (unsigned x = 0; x < vis->state_len; x++) {
 		for (unsigned y = 0; y < vis->state_len; y++) {
 			char buf[32];
@@ -240,8 +242,8 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 			    fixed_decimals(val, vis->cov_precision), val);
 			cairo_text_extents(cr, buf, &te);
 			cairo_move_to(cr,
-			    (x + 0.5) * COV_COLUMN_WIDTH - te.width / 2,
-			    (y + 0.5) * COV_COLUMN_WIDTH - te.height / 2 -
+			    (x + 0.5) * COV_COLUMN - te.width / 2,
+			    (y + 0.5) * COV_ROW - te.height / 2 -
 			    te.y_bearing);
 			cairo_show_text(cr, buf);
 		}
@@ -307,7 +309,7 @@ kalman_vis_alloc(kalman_t *kal, const char *name)
 		vis->decimals[i] = 8;
 	vis->cov_precision = 7;
 
-	w = GRAPH_WIDTH + GRAPH_DATA_WIDTH + vis->state_len * COV_COLUMN_WIDTH;
+	w = GRAPH_WIDTH + GRAPH_DATA_WIDTH + vis->state_len * COV_COLUMN;
 	h = vis->state_len * GRAPH_HEIGHT;
 	cr.top = 100 + h;
 	cr.right = 100 + w;
