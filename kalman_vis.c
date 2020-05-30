@@ -234,9 +234,10 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 	for (unsigned x = 0; x < vis->state_len; x++) {
 		for (unsigned y = 0; y < vis->state_len; y++) {
 			char buf[32];
+			double val = KALMAN_MATxy(vis->cov, x, y);
 
-			snprintf(buf, sizeof (buf), "%.*f", vis->cov_precision,
-			    (double)KALMAN_MATxy(vis->cov, x, y));
+			snprintf(buf, sizeof (buf), "%.*f",
+			    fixed_decimals(val, vis->cov_precision), val);
 			cairo_text_extents(cr, buf, &te);
 			cairo_move_to(cr,
 			    (x + 0.5) * COV_COLUMN_WIDTH - te.width / 2,
@@ -304,7 +305,7 @@ kalman_vis_alloc(kalman_t *kal, const char *name)
 	KAL_ASSERT(name != NULL);
 	for (unsigned i = 0; i < vis->state_len; i++)
 		vis->decimals[i] = 8;
-	vis->cov_precision = 3;
+	vis->cov_precision = 7;
 
 	w = GRAPH_WIDTH + GRAPH_DATA_WIDTH + vis->state_len * COV_COLUMN_WIDTH;
 	h = vis->state_len * GRAPH_HEIGHT;
