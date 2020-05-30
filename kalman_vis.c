@@ -141,8 +141,8 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	    sample = list_next(&vis->samples, sample), i++) {
 		kalman_real_t val = sample->m.v[idx];
 		double x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
-		double y = round(fx_lin(val, minval, GRAPH_HEIGHT / 2,
-		    maxval, -GRAPH_HEIGHT / 2));
+		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
+		    maxval, -GRAPH_HEIGHT / 2);
 
 		cairo_rectangle(cr, x - 1, y - 1, 2, 2);
 	}
