@@ -39,6 +39,7 @@ typedef struct kalman_vis_s kalman_vis_t;
 kalman_vis_t *kalman_vis_alloc(kalman_t *kal, const char *name);
 void kalman_vis_free(kalman_vis_t *vis);
 void kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m);
+void kalman_vis_reset(kalman_vis_t *vis);
 void kalman_vis_open(kalman_vis_t *vis);
 bool kalman_vis_is_open(const kalman_vis_t *vis);
 void kalman_vis_set_decimals(kalman_vis_t *vis, unsigned state_var,

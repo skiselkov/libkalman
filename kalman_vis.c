@@ -244,8 +244,8 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 		cairo_text_extents_t te;
 		cairo_set_source_rgb(cr, 1, 0, 0);
 		cairo_text_extents(cr, "NO DATA", &te);
-		cairo_move_to(cr, w - te.width / 2, h - te.height / 2 -
-		    te.y_bearing);
+		cairo_move_to(cr, w / 2 - te.width / 2,
+		    h / 2 - te.height / 2 - te.y_bearing);
 		cairo_show_text(cr, "NO DATA");
 	}
 
@@ -330,6 +330,19 @@ kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m)
 	}
 	list_insert_head(&vis->samples, sample);
 	vis->cov = kalman_get_cov_mat(vis->kal);
+	mutex_exit(&vis->lock);
+}
+
+void
+kalman_vis_reset(kalman_vis_t *vis)
+{
+	sample_t *sample;
+
+	KAL_ASSERT(vis != NULL);
+
+	mutex_enter(&vis->lock);
+	while ((sample = list_remove_head(&vis->samples)) != NULL)
+		free(sample);
 	mutex_exit(&vis->lock);
 }
 
