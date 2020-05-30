@@ -142,7 +142,7 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 		kalman_real_t val = sample->m.v[idx];
 		double x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
 		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
-		    maxval, -GRAPH_HEIGHT / 2);
+		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
 
 		cairo_rectangle(cr, x - 1, y - 1, 2, 2);
 	}
@@ -157,7 +157,7 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 		kalman_real_t val = sample->state.v[idx];
 		double x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
 		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
-		    maxval, -GRAPH_HEIGHT / 2);
+		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
 
 		if (i == 0)
 			cairo_move_to(cr, x + 0.5, y + 0.5);
@@ -227,12 +227,13 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 	cairo_save(cr);
 	cairo_translate(cr, GRAPH_DATA_WIDTH + GRAPH_WIDTH, 0);
 
+	cairo_set_font_size(cr, 21);
 	cairo_text_extents(cr, "Covariance", &te);
 	cairo_move_to(cr,
 	    (vis->state_len * COV_COLUMN) / 2 - te.width / 2, 20);
 	cairo_show_text(cr, "Covariance");
 
-	cairo_set_font_size(cr, 18);
+	cairo_set_font_size(cr, 16);
 	for (unsigned x = 0; x < vis->state_len; x++) {
 		for (unsigned y = 0; y < vis->state_len; y++) {
 			char buf[32];
@@ -265,7 +266,7 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 	cairo_paint(cr);
 
 	cairo_set_source_rgb(cr, 0, 0, 0);
-	cairo_set_font_size(cr, 20);
+	cairo_set_font_size(cr, 18);
 	cairo_set_line_width(cr, 1);
 
 	mutex_enter(&vis->lock);
