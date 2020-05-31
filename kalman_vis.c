@@ -23,6 +23,8 @@
  * Copyright 2020 Saso Kiselkov. All rights reserved.
  */
 
+#include <stdarg.h>
+
 #include <XPLMDisplay.h>
 
 #include <acfutils/geom.h>
@@ -41,9 +43,14 @@
 #define	GRAPH_DATA_WIDTH	80
 #define	COV_COLUMN		100
 #define	COV_ROW			GRAPH_HEIGHT
+#define	CONT_COLUMN		100
 #define	RENDER_FPS		20
 #define	MAX_SAMPLES		200
 #define	PX_PER_SAMPLE		3
+
+#define	HEADING_FONT_SZ		21
+#define	COV_DATA_FONT_SZ	16
+#define	GRAPH_DATA_FONT_SZ	18
 
 typedef struct {
 	kalman_vec_t		m;
@@ -62,6 +69,8 @@ struct kalman_vis_s {
 	/* protected by lock */
 	list_t			samples;
 	kalman_mat_t		cov;
+	kalman_mat_t		m_cov;
+	kalman_vec_t		cont;
 	char			labels[KALMAN_VEC_LEN][128];
 
 	unsigned		decimals[KALMAN_VEC_LEN];	/* atomic */
@@ -101,14 +110,28 @@ win_draw(XPLMWindowID win, void *refcon)
 }
 
 static void
+render_centered_text(cairo_t *cr, double x, double y, const char *format, ...)
+{
+	char buf[128];
+	va_list ap;
+	cairo_text_extents_t te;
+
+	va_start(ap, format);
+	vsnprintf(buf, sizeof (buf), format, ap);
+	va_end(ap);
+
+	cairo_text_extents(cr, buf, &te);
+	cairo_move_to(cr, x - te.width / 2, y - te.height / 2 - te.y_bearing);
+	cairo_show_text(cr, buf);
+}
+
+static void
 render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 {
-	char buf[32];
 	int i;
 	vect3_t color;
 	kalman_real_t minval = INFINITY, maxval = -INFINITY;
 	kalman_real_t stateval;
-	cairo_text_extents_t te;
 
 	KAL_ASSERT(cr != NULL);
 	KAL_ASSERT(vis != NULL);
@@ -167,33 +190,20 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	cairo_stroke(cr);
 
 	/* Draw the state's current value */
-	snprintf(buf, sizeof (buf), "%.*f",
-	    fixed_decimals(stateval, vis->decimals[idx]),
-	    (double)stateval);
-	cairo_text_extents(cr, buf, &te);
-	cairo_move_to(cr, -GRAPH_DATA_WIDTH / 2 - te.width / 2,
-	    -te.height / 2 - te.y_bearing);
-	cairo_show_text(cr, buf);
+	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, 0, "%.*f",
+	    fixed_decimals(stateval, vis->decimals[idx]), (double)stateval);
 
 	/* Draw the minimum and maximum graph values */
 	cairo_set_source_rgb(cr, 0, 0, 0);
-	snprintf(buf, sizeof (buf), "%.*f",
-	    fixed_decimals(maxval, vis->decimals[idx]), (double)maxval);
-	cairo_text_extents(cr, buf, &te);
-	cairo_move_to(cr, -GRAPH_DATA_WIDTH / 2 - te.width / 2,
-	    -GRAPH_HEIGHT / 2 + te.height - te.y_bearing);
-	cairo_show_text(cr, buf);
-
-	snprintf(buf, sizeof (buf), "%.*f",
-	    fixed_decimals(minval, vis->decimals[idx]), (double)minval);
-	cairo_text_extents(cr, buf, &te);
-	cairo_move_to(cr, -GRAPH_DATA_WIDTH / 2 - te.width / 2,
-	    GRAPH_HEIGHT / 2 - te.height - te.y_bearing - 10);
-	cairo_show_text(cr, buf);
+	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, -GRAPH_HEIGHT / 2 + 15,
+	    "%.*f", fixed_decimals(minval, vis->decimals[idx]), (double)minval);
+	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, -GRAPH_HEIGHT / 2 - 15,
+	    "%.*f", fixed_decimals(maxval, vis->decimals[idx]), (double)maxval);
 
 	/* Draw the label */
 	if (strlen(vis->labels[idx]) != 0) {
 		enum { MARGIN = 2 };
+		cairo_text_extents_t te;
 
 		cairo_text_extents(cr, vis->labels[idx], &te);
 
@@ -219,35 +229,63 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 static void
 render_cov(cairo_t *cr, kalman_vis_t *vis)
 {
-	cairo_text_extents_t te;
-
 	KAL_ASSERT(cr != NULL);
 	KAL_ASSERT(vis != NULL);
 
 	cairo_save(cr);
 	cairo_translate(cr, GRAPH_DATA_WIDTH + GRAPH_WIDTH, 0);
 
-	cairo_set_font_size(cr, 21);
-	cairo_text_extents(cr, "Covariance", &te);
-	cairo_move_to(cr,
-	    (vis->state_len * COV_COLUMN) / 2 - te.width / 2, 20);
-	cairo_show_text(cr, "Covariance");
+	cairo_set_font_size(cr, HEADING_FONT_SZ);
+	render_centered_text(cr, (vis->state_len * COV_COLUMN) / 2, 10,
+	    "Filter covariance");
+	render_centered_text(cr, (vis->state_len * COV_COLUMN) / 2, 30,
+	    "(Measurement covariance)");
 
-	cairo_set_font_size(cr, 16);
+	cairo_set_font_size(cr, COV_DATA_FONT_SZ);
 	for (unsigned x = 0; x < vis->state_len; x++) {
 		for (unsigned y = 0; y < vis->state_len; y++) {
-			char buf[32];
-			double val = KALMAN_MATxy(vis->cov, x, y);
+			double val;
 
-			snprintf(buf, sizeof (buf), "%.*f",
+			val = KALMAN_MATxy(vis->cov, x, y);
+			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
+			    (y + 0.5) * COV_ROW, "%.*f",
 			    fixed_decimals(val, vis->cov_precision), val);
-			cairo_text_extents(cr, buf, &te);
-			cairo_move_to(cr,
-			    (x + 0.5) * COV_COLUMN - te.width / 2,
-			    (y + 0.5) * COV_ROW - te.height / 2 -
-			    te.y_bearing);
-			cairo_show_text(cr, buf);
+
+			val = KALMAN_MATxy(vis->m_cov, x, y);
+			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
+			    (y + 0.5) * COV_ROW + 20, "(%.*f)",
+			    fixed_decimals(val, vis->cov_precision), val);
 		}
+	}
+
+	cairo_restore(cr);
+}
+
+static void
+render_cont(cairo_t *cr, unsigned h, kalman_vis_t *vis)
+{
+	KAL_ASSERT(cr != NULL);
+	KAL_ASSERT(vis != NULL);
+
+	cairo_save(cr);
+	cairo_translate(cr, GRAPH_DATA_WIDTH + GRAPH_WIDTH +
+	    vis->state_len * COV_COLUMN, 0);
+
+	cairo_set_line_width(cr, 1);
+	cairo_move_to(cr, 0.5, 0);
+	cairo_line_to(cr, 0.5, h);
+	cairo_stroke(cr);
+
+	cairo_set_font_size(cr, HEADING_FONT_SZ);
+	render_centered_text(cr, COV_COLUMN / 2, 10, "Control");
+	render_centered_text(cr, COV_COLUMN / 2, 30, "vector");
+
+	cairo_set_font_size(cr, COV_DATA_FONT_SZ);
+	for (unsigned i = 0; i < vis->state_len; i++) {
+		double val = KALMAN_VECi(vis->cont, i);
+
+		render_centered_text(cr, CONT_COLUMN / 2, (i + 0.5) * COV_ROW,
+		    "%.*f", fixed_decimals(val, vis->cov_precision), val);
 	}
 
 	cairo_restore(cr);
@@ -266,7 +304,7 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 	cairo_paint(cr);
 
 	cairo_set_source_rgb(cr, 0, 0, 0);
-	cairo_set_font_size(cr, 18);
+	cairo_set_font_size(cr, GRAPH_DATA_FONT_SZ);
 	cairo_set_line_width(cr, 1);
 
 	mutex_enter(&vis->lock);
@@ -275,6 +313,7 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 		for (unsigned i = 0; i < vis->state_len; i++)
 			render_graph(cr, vis, i);
 		render_cov(cr, vis);
+		render_cont(cr, h, vis);
 	} else {
 		cairo_text_extents_t te;
 		cairo_set_source_rgb(cr, 1, 0, 0);
@@ -310,7 +349,8 @@ kalman_vis_alloc(kalman_t *kal, const char *name)
 		vis->decimals[i] = 8;
 	vis->cov_precision = 7;
 
-	w = GRAPH_WIDTH + GRAPH_DATA_WIDTH + vis->state_len * COV_COLUMN;
+	w = GRAPH_WIDTH + GRAPH_DATA_WIDTH + vis->state_len * COV_COLUMN +
+	    CONT_COLUMN;
 	h = vis->state_len * GRAPH_HEIGHT;
 	cr.top = 100 + h;
 	cr.right = 100 + w;
@@ -348,12 +388,14 @@ kalman_vis_free(kalman_vis_t *vis)
 }
 
 void
-kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m)
+kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
+    const kalman_mat_t *m_cov)
 {
 	sample_t *sample = safe_calloc(1, sizeof (*sample));
 
 	KAL_ASSERT(vis != NULL);
 	KAL_ASSERT(m != NULL);
+	KAL_ASSERT(m_cov != NULL);
 
 	sample->m = *m;
 	sample->state = kalman_get_state(vis->kal);
@@ -365,6 +407,8 @@ kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m)
 	}
 	list_insert_head(&vis->samples, sample);
 	vis->cov = kalman_get_cov_mat(vis->kal);
+	vis->m_cov = *m_cov;
+	vis->cont = kalman_get_cont(vis->kal);
 	mutex_exit(&vis->lock);
 }
 
