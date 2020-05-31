@@ -40,7 +40,7 @@
 
 #define	GRAPH_WIDTH		600
 #define	GRAPH_HEIGHT		120
-#define	GRAPH_DATA_WIDTH	80
+#define	GRAPH_DATA_WIDTH	110
 #define	COV_COLUMN		100
 #define	COV_ROW			GRAPH_HEIGHT
 #define	CONT_COLUMN		100
@@ -149,9 +149,11 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	/* Determine min/max values for this graph */
 	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
 	    sample = list_next(&vis->samples, sample)) {
-		minval = MIN(minval, sample->m.v[idx]);
+		if (!KALMAN_IS_NULL_VEC(sample->m)) {
+			minval = MIN(minval, sample->m.v[idx]);
+			maxval = MAX(maxval, sample->m.v[idx]);
+		}
 		minval = MIN(minval, sample->state.v[idx]);
-		maxval = MAX(maxval, sample->m.v[idx]);
 		maxval = MAX(maxval, sample->state.v[idx]);
 	}
 	stateval = ((sample_t *)list_head(&vis->samples))->state.v[idx];
@@ -162,9 +164,13 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	i = 0;
 	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
 	    sample = list_next(&vis->samples, sample), i++) {
-		kalman_real_t val = sample->m.v[idx];
-		double x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
-		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
+		double val, x, y;
+
+		if (KALMAN_IS_NULL_VEC(sample->m))
+			continue;
+		val = sample->m.v[idx];
+		x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
+		y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
 		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
 
 		cairo_rectangle(cr, x - 1, y - 1, 2, 2);
@@ -177,7 +183,7 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	i = 0;
 	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
 	    sample = list_next(&vis->samples, sample), i++) {
-		kalman_real_t val = sample->state.v[idx];
+		double val = sample->state.v[idx];
 		double x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
 		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
 		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
@@ -252,9 +258,15 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 			    fixed_decimals(val, vis->cov_precision), val);
 
 			val = KALMAN_MATxy(vis->m_cov, x, y);
-			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
-			    (y + 0.5) * COV_ROW + 20, "(%.*f)",
-			    fixed_decimals(val, vis->cov_precision), val);
+			if (!isnan(val)) {
+				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
+				    (y + 0.5) * COV_ROW + 20, "(%.*f)",
+				    fixed_decimals(val, vis->cov_precision),
+				    val);
+			} else {
+				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
+				    (y + 0.5) * COV_ROW + 20, "(null)");
+			}
 		}
 	}
 
@@ -343,7 +355,7 @@ kalman_vis_alloc(kalman_t *kal, const char *name)
 
 	KAL_ASSERT(kal != NULL);
 	vis->state_len = kalman_get_state_len(kal);
-	KAL_ASSERT3U(vis->state_len, <, KALMAN_VEC_LEN);
+	KAL_ASSERT3U(vis->state_len, <=, KALMAN_VEC_LEN);
 	KAL_ASSERT(name != NULL);
 	for (unsigned i = 0; i < vis->state_len; i++)
 		vis->decimals[i] = 8;
@@ -356,6 +368,7 @@ kalman_vis_alloc(kalman_t *kal, const char *name)
 	cr.right = 100 + w;
 
 	vis->kal = kal;
+	vis->m_cov = KALMAN_NULL_MAT;
 	mutex_init(&vis->lock);
 	list_create(&vis->samples, sizeof (sample_t), offsetof(sample_t, node));
 	vis->mtcr = mt_cairo_render_init(w, h, RENDER_FPS, NULL,
@@ -394,10 +407,11 @@ kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
 	sample_t *sample = safe_calloc(1, sizeof (*sample));
 
 	KAL_ASSERT(vis != NULL);
-	KAL_ASSERT(m != NULL);
-	KAL_ASSERT(m_cov != NULL);
 
-	sample->m = *m;
+	if (m != NULL)
+		sample->m = *m;
+	else
+		sample->m = KALMAN_NULL_VEC;
 	sample->state = kalman_get_state(vis->kal);
 
 	mutex_enter(&vis->lock);
@@ -407,7 +421,8 @@ kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
 	}
 	list_insert_head(&vis->samples, sample);
 	vis->cov = kalman_get_cov_mat(vis->kal);
-	vis->m_cov = *m_cov;
+	if (m_cov != NULL)
+		vis->m_cov = *m_cov;
 	vis->cont = kalman_get_cont(vis->kal);
 	mutex_exit(&vis->lock);
 }
