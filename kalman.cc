@@ -99,7 +99,7 @@ kalvec_init_value(KalVec &vec, unsigned dim, kalman_real_t value)
  *
  * @param state_len Length of the filter's state vector (i.e. how many
  *	variables you want the filter to work on). This must be greater
- *	than zero and equal to or less than KALMAN_VEC_LEN (6 by default).
+ *	than zero and equal to or less than KALMAN_VEC_LEN (9 by default).
  *	If you need a Kalman filter that can track more variables, change
  *	the KALMAN_VEC_LEN macro defined in `kalman.h'.
  */

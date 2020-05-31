@@ -7,7 +7,7 @@ You simply need to add kalman.cc to your build process. The library
 contains its own copy of the Eigen linear algebra library to do all the
 mathematical heavy lifting. libkalman provides its own C-compatible data
 types for the matrices and vectors. Currently, the library is limited to
-6th order Kalman filters (up to 6 tracked variables), but can be
+9th order Kalman filters (up to 9 tracked variables), but can be
 trivially extended to support arbitrarily large states (see
 ``KALMAN_VEC_LEN`` in ``kalman.h``).
 

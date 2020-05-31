@@ -48,23 +48,23 @@ typedef double kalman_real_t;
 #endif
 
 /*
- * WARNING: matrices are COLUMN ORDER MAJOR.
+ * WARNING: matrices are ROW ORDER MAJOR.
  *
- * Use the KALMAN_MATxy macro to access individual elements of the matrix.
+ * Use the KALMAN_MATxy macro to access individual elements of the matrix,
+ * or use the .mXY fields.
  *
- * Also note, although our state is fixed at 6 elements and a 6x6 matrix,
+ * Also note, although our state is fixed at 9 elements and a 9x9 matrix,
  * this is simply for convenience of the C-type interface of the library.
  * If your problem requires fewer state parameters to be used, simply set
  * the corresponding vector and matrix elements to 0 to ignore them. Or if
  * you need more state, set KALMAN_VEC_LEN macro from your compiler
- * options and (optionally) extend the KALMAN_NULL_VEC, KALMAN_NULL_MAT
- * and KALMAN_IDENT_MAT macros below. These macros are not used by the
- * library, they're simply for your convenience, so if you don't use them,
- * you don't need to modify them and a simple tweak to KALMAN_VEC_LEN will
- * suffice.
+ * options and (optionally) extend the KALMAN_IDENT_MAT macro below. This
+ * macro is not used by the library, it's simply for your convenience, so
+ * if you don't use it, you don't need to modify it and a simple tweak to
+ * KALMAN_VEC_LEN will suffice.
  */
 #ifndef	KALMAN_VEC_LEN
-#define	KALMAN_VEC_LEN		6
+#define	KALMAN_VEC_LEN		9
 #endif
 
 #define	KALMAN_VEC(...)		((kalman_vec_t){{{__VA_ARGS__}}})
@@ -82,133 +82,132 @@ typedef struct {
 			kalman_real_t	p;
 			kalman_real_t	q;
 			kalman_real_t	r;
+			kalman_real_t	a;
+			kalman_real_t	b;
+			kalman_real_t	c;
 		};
 	};
 } kalman_vec_t;
 #define	KALMAN_ZERO_VEC		((kalman_vec_t){{{ 0 }}})
 #define	KALMAN_NULL_VEC \
-	((kalman_vec_t){{{NAN, NAN, NAN, NAN, NAN, NAN}}})
+	((kalman_vec_t){{{ [0 ... (KALMAN_VEC_LEN - 1)] = NAN}}})
 #define	KALMAN_IS_NULL_VEC(vec)	(isnan((vec).v[0]))
 
 typedef struct {
 	union {
 		kalman_real_t		m[KALMAN_VEC_LEN * KALMAN_VEC_LEN];
 		struct {
-			/* first column */
+			/* first row */
 			kalman_real_t	m11;
-			kalman_real_t	m21;
-			kalman_real_t	m31;
-			kalman_real_t	m41;
-			kalman_real_t	m51;
-			kalman_real_t	m61;
-			/* second column */
 			kalman_real_t	m12;
-			kalman_real_t	m22;
-			kalman_real_t	m32;
-			kalman_real_t	m42;
-			kalman_real_t	m52;
-			kalman_real_t	m62;
-			/* third column */
 			kalman_real_t	m13;
-			kalman_real_t	m23;
-			kalman_real_t	m33;
-			kalman_real_t	m43;
-			kalman_real_t	m53;
-			kalman_real_t	m63;
-			/* fourth column */
 			kalman_real_t	m14;
-			kalman_real_t	m24;
-			kalman_real_t	m34;
-			kalman_real_t	m44;
-			kalman_real_t	m54;
-			kalman_real_t	m64;
-			/* five column */
 			kalman_real_t	m15;
-			kalman_real_t	m25;
-			kalman_real_t	m35;
-			kalman_real_t	m45;
-			kalman_real_t	m55;
-			kalman_real_t	m65;
-			/* sixth column */
 			kalman_real_t	m16;
+			kalman_real_t	m17;
+			kalman_real_t	m18;
+			kalman_real_t	m19;
+			/* second row */
+			kalman_real_t	m21;
+			kalman_real_t	m22;
+			kalman_real_t	m23;
+			kalman_real_t	m24;
+			kalman_real_t	m25;
 			kalman_real_t	m26;
+			kalman_real_t	m27;
+			kalman_real_t	m28;
+			kalman_real_t	m29;
+			/* third row */
+			kalman_real_t	m31;
+			kalman_real_t	m32;
+			kalman_real_t	m33;
+			kalman_real_t	m34;
+			kalman_real_t	m35;
 			kalman_real_t	m36;
+			kalman_real_t	m37;
+			kalman_real_t	m38;
+			kalman_real_t	m39;
+			/* fourth row */
+			kalman_real_t	m41;
+			kalman_real_t	m42;
+			kalman_real_t	m43;
+			kalman_real_t	m44;
+			kalman_real_t	m45;
 			kalman_real_t	m46;
+			kalman_real_t	m47;
+			kalman_real_t	m48;
+			kalman_real_t	m49;
+			/* fifth row */
+			kalman_real_t	m51;
+			kalman_real_t	m52;
+			kalman_real_t	m53;
+			kalman_real_t	m54;
+			kalman_real_t	m55;
 			kalman_real_t	m56;
+			kalman_real_t	m57;
+			kalman_real_t	m58;
+			kalman_real_t	m59;
+			/* sixth row */
+			kalman_real_t	m61;
+			kalman_real_t	m62;
+			kalman_real_t	m63;
+			kalman_real_t	m64;
+			kalman_real_t	m65;
 			kalman_real_t	m66;
+			kalman_real_t	m67;
+			kalman_real_t	m68;
+			kalman_real_t	m69;
+			/* seventh row */
+			kalman_real_t	m71;
+			kalman_real_t	m72;
+			kalman_real_t	m73;
+			kalman_real_t	m74;
+			kalman_real_t	m75;
+			kalman_real_t	m76;
+			kalman_real_t	m77;
+			kalman_real_t	m78;
+			kalman_real_t	m79;
+			/* eighth row */
+			kalman_real_t	m81;
+			kalman_real_t	m82;
+			kalman_real_t	m83;
+			kalman_real_t	m84;
+			kalman_real_t	m85;
+			kalman_real_t	m86;
+			kalman_real_t	m87;
+			kalman_real_t	m88;
+			kalman_real_t	m89;
+			/* ninth row */
+			kalman_real_t	m91;
+			kalman_real_t	m92;
+			kalman_real_t	m93;
+			kalman_real_t	m94;
+			kalman_real_t	m95;
+			kalman_real_t	m96;
+			kalman_real_t	m97;
+			kalman_real_t	m98;
+			kalman_real_t	m99;
 		};
 	};
 } kalman_mat_t;
 #define	KALMAN_ZERO_MAT	((kalman_mat_t){{{ 0 }}})
-#define	KALMAN_NULL_MAT	((kalman_mat_t){{{ \
-	NAN, NAN, NAN, NAN, NAN, NAN, \
-	NAN, NAN, NAN, NAN, NAN, NAN, \
-	NAN, NAN, NAN, NAN, NAN, NAN, \
-	NAN, NAN, NAN, NAN, NAN, NAN, \
-	NAN, NAN, NAN, NAN, NAN, NAN, \
-	NAN, NAN, NAN, NAN, NAN, NAN}}})
-#define	KALMAN_IDENT_MAT ((kalman_mat_t){{{ \
-	1, 0, 0, 0, 0, 0, \
-	0, 1, 0, 0, 0, 0, \
-	0, 0, 1, 0, 0, 0, \
-	0, 0, 0, 1, 0, 0, \
-	0, 0, 0, 0, 1, 0, \
-	0, 0, 0, 0, 0, 1 }}})
+#define	KALMAN_NULL_MAT	\
+	((kalman_mat_t){{{ [0 ... (KALMAN_VEC_LEN - 1)] = NAN }}})
+#define	KALMAN_IDENT_MAT	((kalman_mat_t){{{ \
+	1, 0, 0, 0, 0, 0, 0, 0, 0, \
+	0, 1, 0, 0, 0, 0, 0, 0, 0, \
+	0, 0, 1, 0, 0, 0, 0, 0, 0, \
+	0, 0, 0, 1, 0, 0, 0, 0, 0, \
+	0, 0, 0, 0, 1, 0, 0, 0, 0, \
+	0, 0, 0, 0, 0, 1, 0, 0, 0, \
+	0, 0, 0, 0, 0, 0, 1, 0, 0, \
+	0, 0, 0, 0, 0, 0, 0, 1, 0, \
+	0, 0, 0, 0, 0, 0, 0, 0, 1 }}})
 #define	KALMAN_IS_NULL_MAT(mat)	(isnan((mat).m[0]))
 
 #define	KALMAN_MATxy(mat, col, row)	\
-	((mat).m[((col) * KALMAN_VEC_LEN) + row])
+	((mat).m[((row) * KALMAN_VEC_LEN) + (col)])
 
-/*
- * Convenience constructors that take a by-row specification and turn it
- * into the appropriate by-column internal representation.
- */
-#define	KALMAN_MAT2_BYROW(row1col1, row1col2, row2col1, row2col2) \
-	((kalman_mat_t){{{ \
-	row1col1,	row2col1,	0,	0,	0,	0, \
-	row1col2,	row2col2 }}})
-#define	KALMAN_MAT3_BYROW(\
-    row1col1, row1col2, row1col3, \
-    row2col1, row2col2, row2col3, \
-    row3col1, row3col2, row3col3) ((kalman_mat_t){{{ \
-	row1col1,	row2col1,	row3col1,	0,	0,	0, \
-	row1col2,	row2col2,	row3col2,	0,	0,	0, \
-	row1col3,	row2col3,	row3col3}}})
-#define	KALMAN_MAT4_BYROW(\
-    row1col1, row1col2, row1col3, row1col4, \
-    row2col1, row2col2, row2col3, row2col4, \
-    row3col1, row3col2, row3col3, row3col4, \
-    row4col1, row4col2, row4col3, row4col4) ((kalman_mat_t){{{ \
-	row1col1, row2col1, row3col1, row4col1, 0, 0, \
-	row1col2, row2col2, row3col2, row4col2, 0, 0, \
-	row1col3, row2col3, row3col3, row4col3, 0, 0, \
-	row1col4, row2col4, row3col4, row4col4 }}})
-#define	KALMAN_MAT5_BYROW(\
-    row1col1, row1col2, row1col3, row1col4, row1col5, \
-    row2col1, row2col2, row2col3, row2col4, row2col5, \
-    row3col1, row3col2, row3col3, row3col4, row3col5, \
-    row4col1, row4col2, row4col3, row4col4, row4col5, \
-    row5col1, row5col2, row5col3, row5col4, row5col5) \
-    ((kalman_mat_t){{{ \
-	row1col1, row2col1, row3col1, row4col1, row5col1, 0, \
-	row1col2, row2col2, row3col2, row4col2, row5col2, 0, \
-	row1col3, row2col3, row3col3, row4col3, row5col3, 0, \
-	row1col4, row2col4, row3col4, row4col4, row5col4, 0, \
-	row1col5, row2col5, row3col5, row4col5, row5col5, 0}}})
-#define	KALMAN_MAT6_BYROW(\
-    row1col1, row1col2, row1col3, row1col4, row1col5, row1col6, \
-    row2col1, row2col2, row2col3, row2col4, row2col5, row2col6, \
-    row3col1, row3col2, row3col3, row3col4, row3col5, row3col6, \
-    row4col1, row4col2, row4col3, row4col4, row4col5, row4col6, \
-    row5col1, row5col2, row5col3, row5col4, row5col5, row5col6, \
-    row6col1, row6col2, row6col3, row6col4, row6col5, row6col6) \
-    ((kalman_mat_t){{{ \
-	row1col1, row2col1, row3col1, row4col1, row5col1, row6col1, \
-	row1col2, row2col2, row3col2, row4col2, row5col2, row6col2, \
-	row1col3, row2col3, row3col3, row4col3, row5col3, row6col3, \
-	row1col4, row2col4, row3col4, row4col4, row5col4, row6col4, \
-	row1col5, row2col5, row3col5, row4col5, row5col5, row6col5, \
-	row1col6, row2col6, row3col6, row4col6, row5col6, row6col6 }}})
 /*
  * Allocation & destruction of the filter.
  */
