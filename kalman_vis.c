@@ -38,15 +38,13 @@
 #include "kalman_assert.h"
 #include "kalman_vis.h"
 
-#define	GRAPH_WIDTH		600
+#define	GRAPH_WIDTH		(vis->max_samples * vis->px_per_sample)
 #define	GRAPH_HEIGHT		120
 #define	GRAPH_DATA_WIDTH	110
 #define	COV_COLUMN		100
 #define	COV_ROW			GRAPH_HEIGHT
 #define	CONT_COLUMN		100
 #define	RENDER_FPS		20
-#define	MAX_SAMPLES		200
-#define	PX_PER_SAMPLE		3
 
 #define	HEADING_FONT_SZ		21
 #define	COV_DATA_FONT_SZ	16
@@ -59,11 +57,14 @@ typedef struct {
 } sample_t;
 
 struct kalman_vis_s {
-	kalman_t		*kal;		/* immutable */
-	unsigned		state_len;	/* immutable */
-	mt_cairo_render_t	*mtcr;		/* immutable */
-	XPLMWindowID		win;		/* immutable */
-	win_resize_ctl_t	winctl;		/* immutable */
+	/* immutable */
+	kalman_t		*kal;
+	unsigned		state_len;
+	unsigned		max_samples;
+	double			px_per_sample;
+	mt_cairo_render_t	*mtcr;
+	XPLMWindowID		win;
+	win_resize_ctl_t	winctl;
 
 	mutex_t			lock;
 	/* protected by lock */
@@ -169,7 +170,7 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 		if (KALMAN_IS_NULL_VEC(sample->m))
 			continue;
 		val = sample->m.v[idx];
-		x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
+		x = GRAPH_WIDTH - i * vis->px_per_sample;
 		y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
 		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
 
@@ -184,7 +185,7 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
 	    sample = list_next(&vis->samples, sample), i++) {
 		double val = sample->state.v[idx];
-		double x = GRAPH_WIDTH - i * PX_PER_SAMPLE;
+		double x = GRAPH_WIDTH - i * vis->px_per_sample;
 		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
 		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
 
@@ -339,7 +340,8 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 }
 
 kalman_vis_t *
-kalman_vis_alloc(kalman_t *kal, const char *name)
+kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
+    double px_per_sample)
 {
 	kalman_vis_t *vis = safe_calloc(1, sizeof (*vis));
 	XPLMCreateWindow_t cr = {
@@ -354,7 +356,11 @@ kalman_vis_alloc(kalman_t *kal, const char *name)
 	unsigned w, h;
 
 	KAL_ASSERT(kal != NULL);
+	KAL_ASSERT(max_samples != 0);
+	KAL_ASSERT(px_per_sample > 0);
 	vis->state_len = kalman_get_state_len(kal);
+	vis->max_samples = max_samples;
+	vis->px_per_sample = px_per_sample;
 	KAL_ASSERT3U(vis->state_len, <=, KALMAN_VEC_LEN);
 	KAL_ASSERT(name != NULL);
 	for (unsigned i = 0; i < vis->state_len; i++)
@@ -415,7 +421,7 @@ kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
 	sample->state = kalman_get_state(vis->kal);
 
 	mutex_enter(&vis->lock);
-	while (list_count(&vis->samples) >= MAX_SAMPLES) {
+	while (list_count(&vis->samples) >= vis->max_samples) {
 		sample_t *old_sample = list_remove_tail(&vis->samples);
 		free(old_sample);
 	}
