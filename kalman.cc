@@ -26,6 +26,20 @@
 typedef Eigen::Matrix<kalman_real_t, Eigen::Dynamic, Eigen::Dynamic> KalMat;
 typedef Eigen::Matrix<kalman_real_t, Eigen::Dynamic, 1> KalVec;
 
+#ifdef	KAL_HEAVY_DEBUG
+#define	CHECK_MAT(mat) \
+	do { \
+		for (int col = 0, cols = (mat).cols(); col < cols; col++) { \
+			for (int row = 0, rows = (mat).rows(); row < rows; \
+			    row++) {\
+				KAL_ASSERT(!isnan((mat)(row, col))); \
+			} \
+		} \
+	} while (0)
+#else	/* !defined(KAL_HEAVY_DEBUG) */
+#define	CHECK_MAT(mat)
+#endif	/* !defined(KAL_HEAVY_DEBUG) */
+
 struct kalman_s {
 	unsigned	state_len;
 
@@ -403,8 +417,15 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	 * P' = A  * P    * A  + Q
 	 *  k    k    k-1    k    k
 	 */
+	CHECK_MAT(kal->A_k);
+	CHECK_MAT(kal->x_k);
+	CHECK_MAT(kal->B_k);
+	CHECK_MAT(kal->u_k);
+	CHECK_MAT(kal->w_k);
 	x_k_pred = (kal->A_k * kal->x_k) + (kal->B_k * kal->u_k) + kal->w_k;
 	P_k_pred = (kal->A_k * kal->P_k * kal->A_k.transpose()) + kal->Q_k;
+	CHECK_MAT(x_k_pred);
+	CHECK_MAT(P_k_pred);
 
 	if (measurement == NULL) {
 		KAL_ASSERT(measurement_cov_mat == NULL);
@@ -417,12 +438,16 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	KAL_ASSERT(measurement_cov_mat != NULL);
 
 	kalvec_copyin(m, measurement, kal->state_len);
+	CHECK_MAT(m);
 	kalmat_copyin(m_cov_mat, measurement_cov_mat, kal->state_len);
+	CHECK_MAT(m_cov_mat);
 
-	if (observation_model_p != NULL)
+	if (observation_model_p != NULL) {
 		kalmat_copyin(obsv_model, observation_model_p, kal->state_len);
-	else
+		CHECK_MAT(obsv_model);
+	} else {
 		obsv_model.setIdentity();
+	}
 	obsv_model_T = obsv_model.transpose();
 	/*
 	 * Compute the Kalman gain:
@@ -436,6 +461,7 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	 */
 	tmpmat = P_k_pred * obsv_model_T;
 	K = tmpmat * (obsv_model * tmpmat + m_cov_mat).inverse();
+	CHECK_MAT(K);
 	/*
 	 * Update the estimate via the measurement:
 	 *                /            \
@@ -443,11 +469,13 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 	 *  k    k        \ k    k   k /
 	 */
 	kal->x_k = x_k_pred + K * (m - obsv_model * x_k_pred);
+	CHECK_MAT(kal->x_k);
 	/*
 	 * P  = P' - K * H  * P'
 	 *  k    k        k    k
 	 */
 	kal->P_k = P_k_pred - K * obsv_model * P_k_pred;
+	CHECK_MAT(kal->P_k);
 
 	KAL_ASSERT3F(kal->P_k(0, 0), >=, 0);
 	KAL_ASSERT(isfinite(kal->x_k(0)));
