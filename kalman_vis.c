@@ -202,9 +202,9 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	/* Draw the minimum and maximum graph values */
 	cairo_set_source_rgb(cr, 0, 0, 0);
 	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, -GRAPH_HEIGHT / 2 + 15,
-	    "%.*f", fixed_decimals(minval, vis->decimals[idx]), (double)minval);
-	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, -GRAPH_HEIGHT / 2 - 15,
 	    "%.*f", fixed_decimals(maxval, vis->decimals[idx]), (double)maxval);
+	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, GRAPH_HEIGHT / 2 - 15,
+	    "%.*f", fixed_decimals(minval, vis->decimals[idx]), (double)minval);
 
 	/* Draw the label */
 	if (strlen(vis->labels[idx]) != 0) {
