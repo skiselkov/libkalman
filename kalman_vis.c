@@ -50,6 +50,9 @@
 #define	COV_DATA_FONT_SZ	16
 #define	GRAPH_DATA_FONT_SZ	18
 
+#define	AUTO_DECIMALS(value, decimals) \
+	((decimals) < 0 ? -(decimals) : fixed_decimals((value), (decimals)))
+
 typedef struct {
 	kalman_vec_t		m;
 	kalman_vec_t		state;
@@ -74,8 +77,8 @@ struct kalman_vis_s {
 	kalman_vec_t		cont;
 	char			labels[KALMAN_VEC_LEN][128];
 
-	unsigned		decimals[KALMAN_VEC_LEN];	/* atomic */
-	unsigned		cov_precision;	/* atomic */
+	int			decimals[KALMAN_VEC_LEN];	/* atomic */
+	int			cov_precision;	/* atomic */
 };
 
 static const vect3_t color_table[] = {
@@ -196,14 +199,14 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 
 	/* Draw the state's current value */
 	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, 0, "%.*f",
-	    fixed_decimals(stateval, vis->decimals[idx]), (double)stateval);
+	    AUTO_DECIMALS(stateval, vis->decimals[idx]), (double)stateval);
 
 	/* Draw the minimum and maximum graph values */
 	cairo_set_source_rgb(cr, 0, 0, 0);
 	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, -GRAPH_HEIGHT / 2 + 15,
-	    "%.*f", fixed_decimals(maxval, vis->decimals[idx]), (double)maxval);
+	    "%.*f", AUTO_DECIMALS(maxval, vis->decimals[idx]), (double)maxval);
 	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, GRAPH_HEIGHT / 2 - 15,
-	    "%.*f", fixed_decimals(minval, vis->decimals[idx]), (double)minval);
+	    "%.*f", AUTO_DECIMALS(minval, vis->decimals[idx]), (double)minval);
 
 	/* Draw the label */
 	if (strlen(vis->labels[idx]) != 0) {
@@ -254,13 +257,13 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 			val = KALMAN_MATxy(vis->cov, x, y);
 			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 			    (y + 0.5) * COV_ROW, "%.*f",
-			    fixed_decimals(val, vis->cov_precision), val);
+			    AUTO_DECIMALS(val, vis->cov_precision), val);
 
 			val = KALMAN_MATxy(vis->m_cov, x, y);
 			if (!isnan(val)) {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 				    (y + 0.5) * COV_ROW + 20, "(%.*f)",
-				    fixed_decimals(val, vis->cov_precision),
+				    AUTO_DECIMALS(val, vis->cov_precision),
 				    val);
 			} else {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
@@ -296,7 +299,7 @@ render_cont(cairo_t *cr, unsigned h, kalman_vis_t *vis)
 		double val = KALMAN_VECi(vis->cont, i);
 
 		render_centered_text(cr, CONT_COLUMN / 2, (i + 0.5) * COV_ROW,
-		    "%.*f", fixed_decimals(val, vis->cov_precision), val);
+		    "%.*f", AUTO_DECIMALS(val, vis->cov_precision), val);
 	}
 
 	cairo_restore(cr);
@@ -339,7 +342,7 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 
 kalman_vis_t *
 kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
-    double px_per_sample)
+    double px_per_sample, mt_cairo_uploader_t *mtul)
 {
 	kalman_vis_t *vis = safe_calloc(1, sizeof (*vis));
 	XPLMCreateWindow_t cr = {
@@ -377,6 +380,8 @@ kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
 	list_create(&vis->samples, sizeof (sample_t), offsetof(sample_t, node));
 	vis->mtcr = mt_cairo_render_init(w, h, RENDER_FPS, NULL,
 	    kal_vis_render, NULL, vis);
+	ASSERT(vis->mtcr != NULL);
+	mt_cairo_render_set_uploader(vis->mtcr, mtul);
 	vis->win = XPLMCreateWindowEx(&cr);
 	KAL_ASSERT(vis->win != NULL);
 	classic_win_center(vis->win);
@@ -463,7 +468,7 @@ kalman_vis_is_open(const kalman_vis_t *vis)
 
 void
 kalman_vis_set_decimals(kalman_vis_t *vis, unsigned state_var,
-    unsigned decimals)
+    int decimals)
 {
 	KAL_ASSERT(vis != NULL);
 	KAL_ASSERT3U(state_var, <, vis->state_len);
@@ -482,7 +487,7 @@ kalman_vis_set_label(kalman_vis_t *vis, unsigned state_var, const char *label)
 }
 
 void
-kalman_vis_set_cov_precision(kalman_vis_t *vis, unsigned decimals)
+kalman_vis_set_cov_precision(kalman_vis_t *vis, int decimals)
 {
 	KAL_ASSERT(vis != NULL);
 	vis->cov_precision = decimals;

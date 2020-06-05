@@ -28,6 +28,8 @@
 
 #include <stdbool.h>
 
+#include <acfutils/mt_cairo_render.h>
+
 #include "kalman.h"
 
 #ifdef	__cplusplus
@@ -40,7 +42,7 @@ typedef struct kalman_vis_s kalman_vis_t;
 #define	KALMAN_VIS_PX_PER_SAMPLE_DFL	3
 
 kalman_vis_t *kalman_vis_alloc(kalman_t *kal, const char *name,
-    unsigned max_samples, double px_per_sample);
+    unsigned max_samples, double px_per_sample, mt_cairo_uploader_t *mtul);
 void kalman_vis_free(kalman_vis_t *vis);
 void kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
     const kalman_mat_t *m_cov);
@@ -48,10 +50,10 @@ void kalman_vis_reset(kalman_vis_t *vis);
 void kalman_vis_open(kalman_vis_t *vis);
 bool kalman_vis_is_open(const kalman_vis_t *vis);
 void kalman_vis_set_decimals(kalman_vis_t *vis, unsigned state_var,
-    unsigned decimals);
+    int decimals);
 void kalman_vis_set_label(kalman_vis_t *vis, unsigned state_var,
     const char *label);
-void kalman_vis_set_cov_precision(kalman_vis_t *vis, unsigned decimals);
+void kalman_vis_set_cov_precision(kalman_vis_t *vis, int decimals);
 
 #ifdef	__cplusplus
 }
