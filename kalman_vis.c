@@ -423,6 +423,16 @@ kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
 		sample->m = KALMAN_NULL_VEC;
 	sample->state = kalman_get_state(vis->kal);
 
+	if (KALMAN_IS_NULL_VEC(sample->state)) {
+		/* Remove all samples when the Kalman filter has been reset */
+		free(sample);
+		mutex_enter(&vis->lock);
+		while ((sample = list_remove_head(&vis->samples)) != NULL)
+			free(sample);
+		mutex_exit(&vis->lock);
+		return;
+	}
+
 	mutex_enter(&vis->lock);
 	while (list_count(&vis->samples) >= vis->max_samples) {
 		sample_t *old_sample = list_remove_tail(&vis->samples);
