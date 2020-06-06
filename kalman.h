@@ -191,8 +191,8 @@ typedef struct {
 	};
 } kalman_mat_t;
 #define	KALMAN_ZERO_MAT	((kalman_mat_t){{{ 0 }}})
-#define	KALMAN_NULL_MAT	\
-	((kalman_mat_t){{{ [0 ... (KALMAN_VEC_LEN - 1)] = NAN }}})
+#define	KALMAN_NULL_MAT	((kalman_mat_t)\
+	{{{ [0 ... ((KALMAN_VEC_LEN * KALMAN_VEC_LEN) - 1)] = NAN }}})
 #define	KALMAN_IDENT_MAT	((kalman_mat_t){{{ \
 	1, 0, 0, 0, 0, 0, 0, 0, 0, \
 	0, 1, 0, 0, 0, 0, 0, 0, 0, \
@@ -248,8 +248,9 @@ void kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
 /*
  * Utility functions
  */
-void kalman_combine_s(double m0, double var0, double m1, double var1,
-    double *m_out, double *var_out);
+void kalman_combine_s(kalman_real_t m0, kalman_real_t var0,
+    kalman_real_t m1, kalman_real_t var1,
+    kalman_real_t *m_out, kalman_real_t *var_out);
 void kalman_combine_v(unsigned state_len,
     const kalman_vec_t *m0_in, const kalman_mat_t *cov0_in,
     const kalman_vec_t *m1_in, const kalman_mat_t *cov1_in,

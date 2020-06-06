@@ -495,8 +495,9 @@ kalman_step(kalman_t *kal, const kalman_vec_t *measurement,
  * @param var_out Output that will be populated with the combined variance.
  */
 void
-kalman_combine_s(double m0, double var0, double m1, double var1,
-    double *m_out, double *var_out)
+kalman_combine_s(kalman_real_t m0, kalman_real_t var0,
+    kalman_real_t m1, kalman_real_t var1,
+    kalman_real_t *m_out, kalman_real_t *var_out)
 {
 	double k;
 
