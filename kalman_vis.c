@@ -151,12 +151,13 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	/* Determine min/max values for this graph */
 	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
 	    sample = list_next(&vis->samples, sample)) {
-		if (!KALMAN_IS_NULL_VEC(sample->m)) {
-			minval = MIN(minval, sample->m.v[idx]);
-			maxval = MAX(maxval, sample->m.v[idx]);
+		if (!isnan(KALMAN_VECi(sample->m, idx))) {
+			minval = MIN(minval, KALMAN_VECi(sample->m, idx));
+			maxval = MAX(maxval, KALMAN_VECi(sample->m, idx));
 		}
-		minval = MIN(minval, sample->state.v[idx]);
-		maxval = MAX(maxval, sample->state.v[idx]);
+		ASSERT(!isnan(KALMAN_VECi(sample->state, idx)));
+		minval = MIN(minval, KALMAN_VECi(sample->state, idx));
+		maxval = MAX(maxval, KALMAN_VECi(sample->state, idx));
 	}
 	stateval = ((sample_t *)list_head(&vis->samples))->state.v[idx];
 	ASSERT(isfinite(minval));
@@ -168,9 +169,9 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	    sample = list_next(&vis->samples, sample), i++) {
 		double val, x, y;
 
-		if (KALMAN_IS_NULL_VEC(sample->m))
+		if (isnan(KALMAN_VECi(sample->m, idx)))
 			continue;
-		val = sample->m.v[idx];
+		val = KALMAN_VECi(sample->m, idx);
 		x = GRAPH_WIDTH - i * vis->px_per_sample;
 		y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
 		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
