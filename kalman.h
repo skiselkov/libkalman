@@ -205,7 +205,7 @@ typedef struct {
 	0, 0, 0, 0, 0, 0, 0, 0, 1 }}})
 #define	KALMAN_IS_NULL_MAT(mat)	(isnan((mat).m[0]))
 
-#define	KALMAN_MATxy(mat, col, row)	\
+#define	KALMAN_MATxy(mat, row, col)	\
 	((mat).m[((row) * KALMAN_VEC_LEN) + (col)])
 
 /*

@@ -62,7 +62,7 @@ kalmat_copyin(KalMat &mat, const kalman_mat_t *c_mat, unsigned dim)
 {
 	for (unsigned col = 0; col < dim; col++) {
 		for (unsigned row = 0; row < dim; row++)
-			mat(row, col) = KALMAN_MATxy(*c_mat, col, row);
+			mat(row, col) = KALMAN_MATxy(*c_mat, row, col);
 	}
 }
 
@@ -615,10 +615,10 @@ kalman_print_mat(const char *name, const kalman_mat_t *mat, unsigned state_len)
 			printf("%s", leadspace);
 		for (unsigned c = 0; c < state_len; c++) {
 #ifdef	KALMAN_REAL_LONG_DOUBLE
-			printf("%11.4Lf%s", KALMAN_MATxy(*mat, c, r),
+			printf("%11.4Lf%s", KALMAN_MATxy(*mat, r, c),
 			    (c + 1 < state_len) ? " " : "");
 #else	/* !defined(KALMAN_REAL_LONG_DOUBLE) */
-			printf("%11.4f%s", KALMAN_MATxy(*mat, c, r),
+			printf("%11.4f%s", KALMAN_MATxy(*mat, r, c),
 			    (c + 1 < state_len) ? " " : "");
 #endif	/* !defined(KALMAN_REAL_LONG_DOUBLE) */
 		}
