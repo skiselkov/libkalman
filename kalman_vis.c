@@ -251,16 +251,16 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 	    "(Measurement covariance)");
 
 	cairo_set_font_size(cr, COV_DATA_FONT_SZ);
-	for (unsigned col = 0; col < vis->state_len; col++) {
-		for (unsigned row = 0; row < vis->state_len; row++) {
+	for (unsigned x = 0; x < vis->state_len; x++) {
+		for (unsigned y = 0; y < vis->state_len; y++) {
 			double val;
 
-			val = KALMAN_MATxy(vis->cov, row, col);
+			val = KALMAN_MATyx(vis->cov, y, x);
 			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 			    (y + 0.5) * COV_ROW, "%.*f",
 			    AUTO_DECIMALS(val, vis->cov_precision), val);
 
-			val = KALMAN_MATxy(vis->m_cov, row, col);
+			val = KALMAN_MATyx(vis->m_cov, y, x);
 			if (!isnan(val)) {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 				    (y + 0.5) * COV_ROW + 20, "(%.*f)",

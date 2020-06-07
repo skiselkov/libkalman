@@ -50,8 +50,8 @@ typedef double kalman_real_t;
 /*
  * WARNING: matrices are ROW ORDER MAJOR.
  *
- * Use the KALMAN_MATxy macro to access individual elements of the matrix,
- * or use the .mXY fields.
+ * Use the KALMAN_MATyx or KALMAN_MATxy macros to access individual elements
+ * of the matrix, or use the .mYX fields.
  *
  * Also note, although our state is fixed at 9 elements and a 9x9 matrix,
  * this is simply for convenience of the C-type interface of the library.
@@ -205,7 +205,10 @@ typedef struct {
 	0, 0, 0, 0, 0, 0, 0, 0, 1 }}})
 #define	KALMAN_IS_NULL_MAT(mat)	(isnan((mat).m[0]))
 
-#define	KALMAN_MATxy(mat, row, col)	\
+#define	KALMAN_MATyx(mat, row, col)	\
+	((mat).m[((row) * KALMAN_VEC_LEN) + (col)])
+
+#define	KALMAN_MATxy(mat, col, row)	\
 	((mat).m[((row) * KALMAN_VEC_LEN) + (col)])
 
 /*
