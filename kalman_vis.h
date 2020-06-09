@@ -46,6 +46,8 @@ kalman_vis_t *kalman_vis_alloc(kalman_t *kal, const char *name,
 void kalman_vis_free(kalman_vis_t *vis);
 void kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
     const kalman_mat_t *m_cov);
+void kalman_vis_dupdate(kalman_vis_t *vis, const kalman_dmat_t *m,
+    const kalman_dmat_t *m_cov);
 void kalman_vis_reset(kalman_vis_t *vis);
 void kalman_vis_open(kalman_vis_t *vis);
 bool kalman_vis_is_open(const kalman_vis_t *vis);

@@ -39,7 +39,7 @@
 #include "kalman_vis.h"
 
 #define	GRAPH_WIDTH		(vis->max_samples * vis->px_per_sample)
-#define	GRAPH_HEIGHT		120
+#define	GRAPH_HEIGHT		100
 #define	GRAPH_DATA_WIDTH	110
 #define	COV_COLUMN		100
 #define	COV_ROW			GRAPH_HEIGHT
@@ -54,8 +54,8 @@
 	((decimals) < 0 ? -(decimals) : fixed_decimals((value), (decimals)))
 
 typedef struct {
-	kalman_vec_t		m;
-	kalman_vec_t		state;
+	kalman_dmat_t		*m;
+	kalman_dmat_t		*state;
 	list_node_t		node;
 } sample_t;
 
@@ -72,9 +72,9 @@ struct kalman_vis_s {
 	mutex_t			lock;
 	/* protected by lock */
 	list_t			samples;
-	kalman_mat_t		cov;
-	kalman_mat_t		m_cov;
-	kalman_vec_t		cont;
+	kalman_dmat_t		*cov;
+	kalman_dmat_t		*m_cov;
+	kalman_dmat_t		*cont;
 	char			labels[KALMAN_VEC_LEN][128];
 
 	int			decimals[KALMAN_VEC_LEN];	/* atomic */
@@ -134,6 +134,7 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	vect3_t color;
 	kalman_real_t minval = INFINITY, maxval = -INFINITY;
 	kalman_real_t stateval;
+	sample_t *sample;
 
 	KAL_ASSERT(cr != NULL);
 	KAL_ASSERT(vis != NULL);
@@ -149,29 +150,31 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	cairo_stroke(cr);
 
 	/* Determine min/max values for this graph */
-	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
+	for (sample = list_head(&vis->samples); sample != NULL;
 	    sample = list_next(&vis->samples, sample)) {
-		if (!isnan(KALMAN_VECi(sample->m, idx))) {
-			minval = MIN(minval, KALMAN_VECi(sample->m, idx));
-			maxval = MAX(maxval, KALMAN_VECi(sample->m, idx));
+		if (sample->m != NULL &&
+		    !isnan(KAL_DMATyx(*sample->m, idx, 0))) {
+			minval = MIN(minval, KAL_DMATyx(*sample->m, idx, 0));
+			maxval = MAX(maxval, KAL_DMATyx(*sample->m, idx, 0));
 		}
-		ASSERT(!isnan(KALMAN_VECi(sample->state, idx)));
-		minval = MIN(minval, KALMAN_VECi(sample->state, idx));
-		maxval = MAX(maxval, KALMAN_VECi(sample->state, idx));
+		ASSERT(sample->state != NULL);
+		minval = MIN(minval, KAL_DMATyx(*sample->state, idx, 0));
+		maxval = MAX(maxval, KAL_DMATyx(*sample->state, idx, 0));
 	}
-	stateval = ((sample_t *)list_head(&vis->samples))->state.v[idx];
+	sample = list_head(&vis->samples);
+	ASSERT(sample != NULL);
+	stateval = KAL_DMATyx(*sample->state, idx, 0);
 	ASSERT(isfinite(minval));
 	ASSERT(isfinite(maxval));
 
 	/* Draw the measurement values - those are all black */
-	i = 0;
-	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
+	for (sample = list_head(&vis->samples), i = 0; sample != NULL;
 	    sample = list_next(&vis->samples, sample), i++) {
 		double val, x, y;
 
-		if (isnan(KALMAN_VECi(sample->m, idx)))
+		if (sample->m == NULL || isnan(KAL_DMATyx(*sample->m, idx, 0)))
 			continue;
-		val = KALMAN_VECi(sample->m, idx);
+		val = KAL_DMATyx(*sample->m, idx, 0);
 		x = GRAPH_WIDTH - i * vis->px_per_sample;
 		y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
 		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
@@ -183,14 +186,14 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	/* Draw filter state */
 	color = color_table[idx % ARRAY_NUM_ELEM(color_table)];
 	cairo_set_source_rgb(cr, color.x, color.y, color.z);
-	i = 0;
-	for (sample_t *sample = list_head(&vis->samples); sample != NULL;
+	for (sample = list_head(&vis->samples), i = 0; sample != NULL;
 	    sample = list_next(&vis->samples, sample), i++) {
-		double val = sample->state.v[idx];
+		double val = KAL_DMATyx(*sample->state, idx, 0);
 		double x = GRAPH_WIDTH - i * vis->px_per_sample;
 		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
 		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
 
+		ASSERT(!isnan(val));
 		if (i == 0)
 			cairo_move_to(cr, x + 0.5, y + 0.5);
 		else
@@ -240,6 +243,7 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 {
 	KAL_ASSERT(cr != NULL);
 	KAL_ASSERT(vis != NULL);
+	KAL_ASSERT(vis->cov != NULL);
 
 	cairo_save(cr);
 	cairo_translate(cr, GRAPH_DATA_WIDTH + GRAPH_WIDTH, 0);
@@ -251,16 +255,18 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 	    "(Measurement covariance)");
 
 	cairo_set_font_size(cr, COV_DATA_FONT_SZ);
-	for (unsigned x = 0; x < vis->state_len; x++) {
-		for (unsigned y = 0; y < vis->state_len; y++) {
+	for (unsigned x = 0; x < vis->cov->cols; x++) {
+		for (unsigned y = 0; y < vis->cov->rows; y++) {
 			double val;
 
-			val = KALMAN_MATyx(vis->cov, y, x);
+			val = KAL_DMATyx(*vis->cov, y, x);
 			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 			    (y + 0.5) * COV_ROW, "%.*f",
 			    AUTO_DECIMALS(val, vis->cov_precision), val);
 
-			val = KALMAN_MATyx(vis->m_cov, y, x);
+			if (vis->m_cov == NULL)
+				continue;
+			val = KAL_DMATyx(*vis->m_cov, y, x);
 			if (!isnan(val)) {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 				    (y + 0.5) * COV_ROW + 20, "(%.*f)",
@@ -281,6 +287,7 @@ render_cont(cairo_t *cr, unsigned h, kalman_vis_t *vis)
 {
 	KAL_ASSERT(cr != NULL);
 	KAL_ASSERT(vis != NULL);
+	KAL_ASSERT(vis->cont != NULL);
 
 	cairo_save(cr);
 	cairo_translate(cr, GRAPH_DATA_WIDTH + GRAPH_WIDTH +
@@ -297,7 +304,7 @@ render_cont(cairo_t *cr, unsigned h, kalman_vis_t *vis)
 
 	cairo_set_font_size(cr, COV_DATA_FONT_SZ);
 	for (unsigned i = 0; i < vis->state_len; i++) {
-		double val = KALMAN_VECi(vis->cont, i);
+		double val = KAL_DMATyx(*vis->cont, i, 0);
 
 		render_centered_text(cr, CONT_COLUMN / 2, (i + 0.5) * COV_ROW,
 		    "%.*f", AUTO_DECIMALS(val, vis->cov_precision), val);
@@ -341,6 +348,16 @@ kal_vis_render(cairo_t *cr, unsigned w, unsigned h, void *userinfo)
 	mutex_exit(&vis->lock);
 }
 
+static void
+free_sample(sample_t *sample)
+{
+	KAL_ASSERT(sample != NULL);
+
+	free(sample->m);
+	free(sample->state);
+	free(sample);
+}
+
 kalman_vis_t *
 kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
     double px_per_sample, mt_cairo_uploader_t *mtul)
@@ -376,7 +393,7 @@ kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
 	cr.right = 100 + w;
 
 	vis->kal = kal;
-	vis->m_cov = KALMAN_NULL_MAT;
+	vis->m_cov = NULL;
 	mutex_init(&vis->lock);
 	list_create(&vis->samples, sizeof (sample_t), offsetof(sample_t, node));
 	vis->mtcr = mt_cairo_render_init(w, h, RENDER_FPS, NULL,
@@ -402,7 +419,7 @@ kalman_vis_free(kalman_vis_t *vis)
 
 	mt_cairo_render_fini(vis->mtcr);
 	while ((sample = list_remove_head(&vis->samples)) != NULL)
-		free(sample);
+		free_sample(sample);
 	list_destroy(&vis->samples);
 	mutex_destroy(&vis->lock);
 	XPLMDestroyWindow(vis->win);
@@ -414,22 +431,47 @@ void
 kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
     const kalman_mat_t *m_cov)
 {
+	kalman_dmat_t *dm, *dm_cov;
+
+	if (m == NULL) {
+		kalman_vis_dupdate(vis, NULL, NULL);
+		return;
+	}
+
+	dm = kalman_dmat_alloc(vis->state_len, 1);
+	dm_cov = kalman_dmat_alloc(vis->state_len, vis->state_len);
+	for (unsigned row = 0; row < vis->state_len; row++) {
+		KAL_DMATyx(*dm, row, 0) = KALMAN_VECi(*m, row);
+		for (unsigned col = 0; col < vis->state_len; col++) {
+			KAL_DMATyx(*dm_cov, row, col) =
+			    KALMAN_MATyx(*m_cov, row, col);
+		}
+	}
+
+	kalman_vis_dupdate(vis, dm, dm_cov);
+
+	free(dm);
+	free(dm_cov);
+}
+
+void
+kalman_vis_dupdate(kalman_vis_t *vis, const kalman_dmat_t *m,
+    const kalman_dmat_t *m_cov)
+{
 	sample_t *sample = safe_calloc(1, sizeof (*sample));
 
 	KAL_ASSERT(vis != NULL);
 
 	if (m != NULL)
-		sample->m = *m;
-	else
-		sample->m = KALMAN_NULL_VEC;
-	sample->state = kalman_get_state(vis->kal);
+		sample->m = kalman_dmat_copy(m);
 
-	if (KALMAN_IS_NULL_VEC(sample->state)) {
+	sample->state = kalman_get_dstate(vis->kal);
+	if (KAL_IS_NULL_DMAT(*sample->state)) {
 		/* Remove all samples when the Kalman filter has been reset */
-		free(sample);
+		free_sample(sample);
 		mutex_enter(&vis->lock);
 		while ((sample = list_remove_head(&vis->samples)) != NULL)
-			free(sample);
+			free_sample(sample);
 		mutex_exit(&vis->lock);
 		return;
 	}
@@ -437,13 +479,17 @@ kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
 	mutex_enter(&vis->lock);
 	while (list_count(&vis->samples) >= vis->max_samples) {
 		sample_t *old_sample = list_remove_tail(&vis->samples);
-		free(old_sample);
+		free_sample(old_sample);
 	}
 	list_insert_head(&vis->samples, sample);
-	vis->cov = kalman_get_cov_mat(vis->kal);
+	vis->cov = kalman_get_dcov_mat(vis->kal);
+	free(vis->m_cov);
 	if (m_cov != NULL)
-		vis->m_cov = *m_cov;
-	vis->cont = kalman_get_cont(vis->kal);
+		vis->m_cov = kalman_dmat_copy(m_cov);
+	else
+		vis->m_cov = NULL;
+	free(vis->cont);
+	vis->cont = kalman_get_dcont(vis->kal);
 	mutex_exit(&vis->lock);
 }
 
@@ -456,7 +502,7 @@ kalman_vis_reset(kalman_vis_t *vis)
 
 	mutex_enter(&vis->lock);
 	while ((sample = list_remove_head(&vis->samples)) != NULL)
-		free(sample);
+		free_sample(sample);
 	mutex_exit(&vis->lock);
 }
 
