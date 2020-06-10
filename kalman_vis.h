@@ -40,9 +40,11 @@ typedef struct kalman_vis_s kalman_vis_t;
 
 #define	KALMAN_VIS_MAX_SAMPLES_DFL	200
 #define	KALMAN_VIS_PX_PER_SAMPLE_DFL	3
+#define	KALMAN_VIS_ROW_HEIGHT_DFL	100
 
 kalman_vis_t *kalman_vis_alloc(kalman_t *kal, const char *name,
-    unsigned max_samples, double px_per_sample, mt_cairo_uploader_t *mtul);
+    unsigned max_samples, double px_per_sample, double row_height,
+    mt_cairo_uploader_t *mtul);
 void kalman_vis_free(kalman_vis_t *vis);
 void kalman_vis_update(kalman_vis_t *vis, const kalman_vec_t *m,
     const kalman_mat_t *m_cov);

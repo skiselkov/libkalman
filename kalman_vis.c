@@ -39,10 +39,8 @@
 #include "kalman_vis.h"
 
 #define	GRAPH_WIDTH		(vis->max_samples * vis->px_per_sample)
-#define	GRAPH_HEIGHT		100
 #define	GRAPH_DATA_WIDTH	110
 #define	COV_COLUMN		100
-#define	COV_ROW			GRAPH_HEIGHT
 #define	CONT_COLUMN		100
 #define	RENDER_FPS		20
 
@@ -65,6 +63,7 @@ struct kalman_vis_s {
 	unsigned		state_len;
 	unsigned		max_samples;
 	double			px_per_sample;
+	double			row_height;
 	mt_cairo_render_t	*mtcr;
 	XPLMWindowID		win;
 	win_resize_ctl_t	winctl;
@@ -142,11 +141,11 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	KAL_ASSERT(list_count(&vis->samples) != 0);
 
 	cairo_save(cr);
-	cairo_translate(cr, GRAPH_DATA_WIDTH, (idx + 0.5) * GRAPH_HEIGHT);
-	cairo_rectangle(cr, 0.5, -GRAPH_HEIGHT / 2 + 0.5,
-	    GRAPH_WIDTH - 1, GRAPH_HEIGHT - 1);
-	cairo_rectangle(cr, -GRAPH_DATA_WIDTH + 0.5, -GRAPH_HEIGHT / 2 + 0.5,
-	    GRAPH_DATA_WIDTH - 1, GRAPH_HEIGHT - 1);
+	cairo_translate(cr, GRAPH_DATA_WIDTH, (idx + 0.5) * vis->row_height);
+	cairo_rectangle(cr, 0.5, -vis->row_height / 2 + 0.5,
+	    GRAPH_WIDTH - 1, vis->row_height - 1);
+	cairo_rectangle(cr, -GRAPH_DATA_WIDTH + 0.5, -vis->row_height / 2 + 0.5,
+	    GRAPH_DATA_WIDTH - 1, vis->row_height - 1);
 	cairo_stroke(cr);
 
 	/* Determine min/max values for this graph */
@@ -176,8 +175,8 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 			continue;
 		val = KAL_DMATyx(*sample->m, idx, 0);
 		x = GRAPH_WIDTH - i * vis->px_per_sample;
-		y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
-		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
+		y = fx_lin(val, minval, vis->row_height / 2,
+		    MAX(maxval, minval + 1e-6), -vis->row_height / 2);
 
 		cairo_rectangle(cr, x - 1, y - 1, 2, 2);
 	}
@@ -190,8 +189,8 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 	    sample = list_next(&vis->samples, sample), i++) {
 		double val = KAL_DMATyx(*sample->state, idx, 0);
 		double x = GRAPH_WIDTH - i * vis->px_per_sample;
-		double y = fx_lin(val, minval, GRAPH_HEIGHT / 2,
-		    MAX(maxval, minval + 1e-6), -GRAPH_HEIGHT / 2);
+		double y = fx_lin(val, minval, vis->row_height / 2,
+		    MAX(maxval, minval + 1e-6), -vis->row_height / 2);
 
 		ASSERT(!isnan(val));
 		if (i == 0)
@@ -207,10 +206,12 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 
 	/* Draw the minimum and maximum graph values */
 	cairo_set_source_rgb(cr, 0, 0, 0);
-	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, -GRAPH_HEIGHT / 2 + 15,
-	    "%.*f", AUTO_DECIMALS(maxval, vis->decimals[idx]), (double)maxval);
-	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2, GRAPH_HEIGHT / 2 - 15,
-	    "%.*f", AUTO_DECIMALS(minval, vis->decimals[idx]), (double)minval);
+	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2,
+	    -vis->row_height / 2 + 15, "%.*f",
+	    AUTO_DECIMALS(maxval, vis->decimals[idx]), (double)maxval);
+	render_centered_text(cr, -GRAPH_DATA_WIDTH / 2,
+	    vis->row_height / 2 - 15, "%.*f",
+	    AUTO_DECIMALS(minval, vis->decimals[idx]), (double)minval);
 
 	/* Draw the label */
 	if (strlen(vis->labels[idx]) != 0) {
@@ -220,17 +221,17 @@ render_graph(cairo_t *cr, kalman_vis_t *vis, unsigned idx)
 		cairo_text_extents(cr, vis->labels[idx], &te);
 
 		cairo_set_source_rgb(cr, 0.85, 0.85, 0.85);
-		cairo_rectangle(cr, 1, -GRAPH_HEIGHT / 2 + 1,
+		cairo_rectangle(cr, 1, -vis->row_height / 2 + 1,
 		    te.width + 2 * MARGIN, te.height + 2 * MARGIN);
 		cairo_fill(cr);
 
 		cairo_set_source_rgb(cr, 0, 0, 0);
-		cairo_rectangle(cr, 0.5, -GRAPH_HEIGHT / 2 + 0.5,
+		cairo_rectangle(cr, 0.5, -vis->row_height / 2 + 0.5,
 		    te.width + 2 * MARGIN, te.height + 2 * MARGIN);
 		cairo_stroke(cr);
 
 		cairo_set_source_rgb(cr, 0, 0, 0);
-		cairo_move_to(cr, MARGIN, -GRAPH_HEIGHT / 2 + MARGIN -
+		cairo_move_to(cr, MARGIN, -vis->row_height / 2 + MARGIN -
 		    te.y_bearing);
 		cairo_show_text(cr, vis->labels[idx]);
 	}
@@ -261,7 +262,7 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 
 			val = KAL_DMATyx(*vis->cov, y, x);
 			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
-			    (y + 0.5) * COV_ROW, "%.*f",
+			    (y + 0.5) * vis->row_height, "%.*f",
 			    AUTO_DECIMALS(val, vis->cov_precision), val);
 
 			if (vis->m_cov == NULL)
@@ -269,12 +270,12 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 			val = KAL_DMATyx(*vis->m_cov, y, x);
 			if (!isnan(val)) {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
-				    (y + 0.5) * COV_ROW + 20, "(%.*f)",
+				    (y + 0.5) * vis->row_height + 20, "(%.*f)",
 				    AUTO_DECIMALS(val, vis->cov_precision),
 				    val);
 			} else {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
-				    (y + 0.5) * COV_ROW + 20, "(null)");
+				    (y + 0.5) * vis->row_height + 20, "(null)");
 			}
 		}
 	}
@@ -306,7 +307,8 @@ render_cont(cairo_t *cr, unsigned h, kalman_vis_t *vis)
 	for (unsigned i = 0; i < vis->state_len; i++) {
 		double val = KAL_DMATyx(*vis->cont, i, 0);
 
-		render_centered_text(cr, CONT_COLUMN / 2, (i + 0.5) * COV_ROW,
+		render_centered_text(cr, CONT_COLUMN / 2,
+		    (i + 0.5) * vis->row_height,
 		    "%.*f", AUTO_DECIMALS(val, vis->cov_precision), val);
 	}
 
@@ -360,7 +362,7 @@ free_sample(sample_t *sample)
 
 kalman_vis_t *
 kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
-    double px_per_sample, mt_cairo_uploader_t *mtul)
+    double px_per_sample, double row_height, mt_cairo_uploader_t *mtul)
 {
 	kalman_vis_t *vis = safe_calloc(1, sizeof (*vis));
 	XPLMCreateWindow_t cr = {
@@ -380,6 +382,7 @@ kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
 	vis->state_len = kalman_get_state_len(kal);
 	vis->max_samples = max_samples;
 	vis->px_per_sample = px_per_sample;
+	vis->row_height = row_height;
 	KAL_ASSERT3U(vis->state_len, <=, KALMAN_VEC_LEN);
 	KAL_ASSERT(name != NULL);
 	for (unsigned i = 0; i < vis->state_len; i++)
@@ -388,7 +391,7 @@ kalman_vis_alloc(kalman_t *kal, const char *name, unsigned max_samples,
 
 	w = GRAPH_WIDTH + GRAPH_DATA_WIDTH + vis->state_len * COV_COLUMN +
 	    CONT_COLUMN;
-	h = vis->state_len * GRAPH_HEIGHT;
+	h = vis->state_len * vis->row_height;
 	cr.top = 100 + h;
 	cr.right = 100 + w;
 
