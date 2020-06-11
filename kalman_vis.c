@@ -253,7 +253,8 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 	render_centered_text(cr, (vis->state_len * COV_COLUMN) / 2, 10,
 	    "Filter covariance");
 	render_centered_text(cr, (vis->state_len * COV_COLUMN) / 2, 30,
-	    "(Measurement covariance)");
+	    (vis->state_len > 2 ? "(Measurement covariance)" :
+	    "(Measurement cov.)"));
 
 	cairo_set_font_size(cr, COV_DATA_FONT_SZ);
 	for (unsigned x = 0; x < vis->cov->cols; x++) {
