@@ -262,14 +262,23 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 			double val;
 
 			val = KAL_DMATyx(*vis->cov, y, x);
-			render_centered_text(cr, (x + 0.5) * COV_COLUMN,
-			    (y + 0.5) * vis->row_height, "%.*f",
-			    AUTO_DECIMALS(val, vis->cov_precision), val);
+			if (val == 0) {
+				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
+				    (y + 0.5) * vis->row_height, "0");
+			} else {
+				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
+				    (y + 0.5) * vis->row_height, "%.*f",
+				    AUTO_DECIMALS(val, vis->cov_precision),
+				    val);
+			}
 
 			if (vis->m_cov == NULL)
 				continue;
 			val = KAL_DMATyx(*vis->m_cov, y, x);
-			if (!isnan(val)) {
+			if (val == 0) {
+				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
+				    (y + 0.5) * vis->row_height + 20, "(0)");
+			} else if (!isnan(val)) {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 				    (y + 0.5) * vis->row_height + 20, "(%.*f)",
 				    AUTO_DECIMALS(val, vis->cov_precision),
@@ -308,9 +317,14 @@ render_cont(cairo_t *cr, unsigned h, kalman_vis_t *vis)
 	for (unsigned i = 0; i < vis->state_len; i++) {
 		double val = KAL_DMATyx(*vis->cont, i, 0);
 
-		render_centered_text(cr, CONT_COLUMN / 2,
-		    (i + 0.5) * vis->row_height,
-		    "%.*f", AUTO_DECIMALS(val, vis->cov_precision), val);
+		if (val == 0) {
+			render_centered_text(cr, CONT_COLUMN / 2,
+			    (i + 0.5) * vis->row_height, "0");
+		} else {
+			render_centered_text(cr, CONT_COLUMN / 2,
+			    (i + 0.5) * vis->row_height, "%.*f",
+			    AUTO_DECIMALS(val, vis->cov_precision), val);
+		}
 	}
 
 	cairo_restore(cr);
