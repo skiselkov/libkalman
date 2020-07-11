@@ -73,6 +73,7 @@ struct kalman_vis_s {
 	list_t			samples;
 	kalman_dmat_t		*cov;
 	kalman_dmat_t		*m_cov;
+	uint64_t		m_cov_age;
 	kalman_dmat_t		*cont;
 	char			labels[KALMAN_VEC_LEN][128];
 
@@ -274,6 +275,11 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 
 			if (vis->m_cov == NULL)
 				continue;
+			if (vis->m_cov_age > 1) {
+				float grey = clampi(vis->m_cov_age, 0, 20) /
+				    40.0;
+				cairo_set_source_rgb(cr, grey, grey, grey);
+			}
 			val = KAL_DMATyx(*vis->m_cov, y, x);
 			if (val == 0) {
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
@@ -287,6 +293,8 @@ render_cov(cairo_t *cr, kalman_vis_t *vis)
 				render_centered_text(cr, (x + 0.5) * COV_COLUMN,
 				    (y + 0.5) * vis->row_height + 20, "(null)");
 			}
+			if (vis->m_cov_age > 1)
+				cairo_set_source_rgb(cr, 0, 0, 0);
 		}
 	}
 
@@ -501,11 +509,13 @@ kalman_vis_dupdate(kalman_vis_t *vis, const kalman_dmat_t *m,
 	}
 	list_insert_head(&vis->samples, sample);
 	vis->cov = kalman_get_dcov_mat(vis->kal);
-	free(vis->m_cov);
-	if (m_cov != NULL)
+	if (m_cov != NULL) {
+		free(vis->m_cov);
 		vis->m_cov = kalman_dmat_copy(m_cov);
-	else
-		vis->m_cov = NULL;
+		vis->m_cov_age = 0;
+	} else {
+		vis->m_cov_age++;
+	}
 	free(vis->cont);
 	vis->cont = kalman_get_dcont(vis->kal);
 	mutex_exit(&vis->lock);
