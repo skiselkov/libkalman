@@ -976,7 +976,7 @@ kalman_combine_s(kalman_real_t m0, kalman_real_t var0,
 	 */
 	k = var0 / (var0 + var1);
 	*m_out = m0 + k * (m1 - m0);
-	*var_out = var0 - k * var1;
+	*var_out = var0 - k * var0;
 }
 
 /**
